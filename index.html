@@ -1,856 +1,1031 @@
- (cd "$(git rev-parse --show-toplevel)" && git apply --3way <<'EOF' 
-diff --git a//dev/null b/index.html
-index 0000000000000000000000000000000000000000..2789326a5875c4e15197ca2b9ef8cae0818b9b1b 100644
---- a//dev/null
-+++ b/index.html
-@@ -0,0 +1,847 @@
-+<!DOCTYPE html>
-+<html lang="en">
-+<head>
-+    <meta charset="UTF-8">
-+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-+    <title>Professional Dieline Generator</title>
-+    <script src="https://cdn.tailwindcss.com"></script>
-+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
-+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-+    <style>
-+        body {
-+            font-family: 'Inter', sans-serif;
-+            background-color: #f8fafc; /* slate-50 */
-+        }
-+        .template-card {
-+            transition: transform 0.2s, box-shadow 0.2s;
-+        }
-+        .template-card:hover {
-+            transform: translateY(-5px);
-+            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
-+        }
-+        .template-card.selected {
-+            box-shadow: 0 0 0 3px #4f46e5; /* indigo-600 */
-+            border-color: #4f46e5;
-+        }
-+        .modal {
-+            display: none; /* Hidden by default */
-+        }
-+        .modal.is-open {
-+            display: flex; /* Show when open */
-+        }
-+        .control-panel {
-+            height: fit-content;
-+        }
-+        .canvas-container {
-+            border: 1px solid #e2e8f0; /* slate-200 */
-+            border-radius: 0.5rem;
-+            overflow: hidden;
-+            position: relative;
-+            background-color: #ffffff;
-+            width: 100%;
-+            height: 100%;
-+        }
-+        #dielineCanvas {
-+            position: absolute;
-+            top: 0;
-+            left: 0;
-+            width: 100%;
-+            height: 100%;
-+            cursor: default;
-+        }
-+        #dielineCanvas.editing {
-+            cursor: move;
-+        }
-+        .zoom-controls {
-+            position: absolute;
-+            bottom: 1rem;
-+            right: 1rem;
-+            display: flex;
-+            gap: 0.5rem;
-+            background-color: rgba(255, 255, 255, 0.8);
-+            padding: 0.5rem;
-+            border-radius: 0.5rem;
-+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-+        }
-+        .zoom-btn {
-+            width: 2rem;
-+            height: 2rem;
-+            border-radius: 9999px;
-+            background-color: #e2e8f0;
-+            color: #475569;
-+            font-weight: bold;
-+            display: flex;
-+            align-items: center;
-+            justify-content: center;
-+        }
-+    </style>
-+</head>
-+<body class="text-slate-800">
-+
-+    <!-- Main Container -->
-+    <div class="flex flex-col lg:flex-row h-screen">
-+        
-+        <!-- Controls Sidebar -->
-+        <aside class="w-full lg:w-96 bg-white p-6 border-r border-slate-200 overflow-y-auto control-panel">
-+            <h1 class="text-2xl font-bold text-slate-900">Dieline Generator</h1>
-+            <p class="text-sm text-slate-500 mt-1 mb-6">Select a template to begin.</p>
-+
-+            <button id="changeTemplateBtn" class="w-full bg-indigo-600 text-white font-bold py-2 px-4 rounded-md hover:bg-indigo-700 transition duration-300 shadow-sm mb-6">
-+                Choose Template
-+            </button>
-+
-+            <div id="config-panel" class="space-y-6">
-+                <div>
-+                    <h3 class="text-lg font-semibold text-slate-800 mb-2" id="selectedTemplateName">Reverse Tuck End</h3>
-+                </div>
-+                <!-- Units -->
-+                <div>
-+                    <label class="block text-sm font-medium text-slate-600">Units</label>
-+                    <div class="mt-1 flex rounded-md shadow-sm">
-+                        <button id="unitIn" class="w-full px-4 py-2 border border-slate-300 bg-indigo-500 text-white text-sm font-medium rounded-l-md">in</button>
-+                        <button id="unitMm" class="w-full px-4 py-2 border border-slate-300 bg-white text-slate-700 text-sm font-medium rounded-r-md -ml-px">mm</button>
-+                    </div>
-+                </div>
-+
-+                <!-- Dimensions -->
-+                <div>
-+                    <h3 class="text-md font-semibold text-slate-800 mb-2">Dimensions (<span id="unitLabel">inches</span>)</h3>
-+                    <div class="space-y-3">
-+                        <div>
-+                            <label for="length" class="block text-xs font-medium text-slate-600">Length (L)</label>
-+                            <input type="number" id="length" value="4" min="0.1" step="0.1" class="mt-1 w-full p-2 border border-slate-300 rounded-md shadow-sm text-sm">
-+                        </div>
-+                        <div>
-+                            <label for="width" class="block text-xs font-medium text-slate-600">Width (W)</label>
-+                            <input type="number" id="width" value="2" min="0.1" step="0.1" class="mt-1 w-full p-2 border border-slate-300 rounded-md shadow-sm text-sm">
-+                        </div>
-+                        <div>
-+                            <label for="height" class="block text-xs font-medium text-slate-600">Height (H)</label>
-+                            <input type="number" id="height" value="6" min="0.1" step="0.1" class="mt-1 w-full p-2 border border-slate-300 rounded-md shadow-sm text-sm">
-+                        </div>
-+                        <div>
-+                            <label class="block text-xs font-medium text-slate-600">Overall Width</label>
-+                            <input type="text" id="overallWidth" disabled class="mt-1 w-full p-2 border border-slate-300 rounded-md shadow-sm text-sm bg-slate-100">
-+                        </div>
-+                        <div>
-+                            <label class="block text-xs font-medium text-slate-600">Overall Height</label>
-+                            <input type="text" id="overallHeight" disabled class="mt-1 w-full p-2 border border-slate-300 rounded-md shadow-sm text-sm bg-slate-100">
-+                        </div>
-+                    </div>
-+                </div>
-+
-+                <!-- Material -->
-+                <div>
-+                    <h3 class="text-md font-semibold text-slate-800 mb-2">Material</h3>
-+                    <div class="space-y-3">
-+                        <div>
-+                            <label for="paperType" class="block text-xs font-medium text-slate-600">Paper Type</label>
-+                            <select id="paperType" class="mt-1 w-full p-2 border border-slate-300 rounded-md shadow-sm text-sm">
-+                                <option value="white-cardboard" data-thickness="18">White Cardboard</option>
-+                                <option value="kraft-paper" data-thickness="16">Kraft Paper</option>
-+                                <option value="corrugated" data-thickness="0">Corrugated Fiberboard</option>
-+                            </select>
-+                        </div>
-+                        <div id="fluteTypeContainer" class="hidden">
-+                            <label for="fluteType" class="block text-xs font-medium text-slate-600">Flute Type</label>
-+                            <select id="fluteType" class="mt-1 w-full p-2 border border-slate-300 rounded-md shadow-sm text-sm">
-+                                <option value="E" data-thickness="63">E Flute (~1.6mm)</option>
-+                                <option value="B" data-thickness="118">B Flute (~3.0mm)</option>
-+                                <option value="C" data-thickness="157">C Flute (~4.0mm)</option>
-+                            </select>
-+                        </div>
-+                        <div>
-+                            <label for="thickness" class="block text-xs font-medium text-slate-600">Custom Thickness (pt)</label>
-+                            <input type="number" id="thickness" value="18" min="8" class="mt-1 w-full p-2 border border-slate-300 rounded-md shadow-sm text-sm">
-+                        </div>
-+                    </div>
-+                </div>
-+
-+                <!-- Advanced Options -->
-+                <div>
-+                    <h3 class="text-md font-semibold text-slate-800 mb-2">Advanced Options</h3>
-+                    <div class="space-y-3">
-+                        <div>
-+                            <label for="glueFlap" class="block text-xs font-medium text-slate-600">Glue Flap Width</label>
-+                            <input type="number" id="glueFlap" value="0.5" min="0.1" step="0.05" class="mt-1 w-full p-2 border border-slate-300 rounded-md shadow-sm text-sm">
-+                        </div>
-+                        <div>
-+                            <label for="topTuckFlap" class="block text-xs font-medium text-slate-600">Top Tuck Flap Height</label>
-+                            <input type="number" id="topTuckFlap" value="0.75" min="0.1" step="0.05" class="mt-1 w-full p-2 border border-slate-300 rounded-md shadow-sm text-sm">
-+                        </div>
-+                        <div>
-+                            <label for="bottomTuckFlap" class="block text-xs font-medium text-slate-600">Bottom Tuck Flap Height</label>
-+                            <input type="number" id="bottomTuckFlap" value="0.75" min="0.1" step="0.05" class="mt-1 w-full p-2 border border-slate-300 rounded-md shadow-sm text-sm">
-+                        </div>
-+                        <div>
-+                            <label for="topDustFlap" class="block text-xs font-medium text-slate-600">Top Dust Flap Height</label>
-+                            <input type="number" id="topDustFlap" value="0.5" min="0.1" step="0.05" class="mt-1 w-full p-2 border border-slate-300 rounded-md shadow-sm text-sm">
-+                        </div>
-+                        <div>
-+                            <label for="bottomDustFlap" class="block text-xs font-medium text-slate-600">Bottom Dust Flap Height</label>
-+                            <input type="number" id="bottomDustFlap" value="0.5" min="0.1" step="0.05" class="mt-1 w-full p-2 border border-slate-300 rounded-md shadow-sm text-sm">
-+                        </div>
-+                        <div>
-+                            <label for="bleed" class="block text-xs font-medium text-slate-600">Bleed</label>
-+                            <input type="number" id="bleed" value="0.125" min="0" step="0.01" class="mt-1 w-full p-2 border border-slate-300 rounded-md shadow-sm text-sm">
-+                        </div>
-+                        <div>
-+                            <label for="safety" class="block text-xs font-medium text-slate-600">Safety Margin</label>
-+                            <input type="number" id="safety" value="0.125" min="0" step="0.01" class="mt-1 w-full p-2 border border-slate-300 rounded-md shadow-sm text-sm">
-+                        </div>
-+                        <div class="flex items-center">
-+                            <input id="tearAway" type="checkbox" class="h-4 w-4 text-indigo-600 border-slate-300 rounded focus:ring-indigo-500">
-+                            <label for="tearAway" class="ml-2 block text-sm text-slate-900">Add Tear-Away Panel</label>
-+                        </div>
-+                        <div id="tearAwayEditContainer" class="hidden space-y-2">
-+                             <button id="addTearLineBtn" class="w-full bg-blue-500 text-white font-bold py-2 px-4 rounded-md hover:bg-blue-600 transition duration-300 shadow-sm text-sm">
-+                                Add Tear Line
-+                            </button>
-+                             <button id="editTearLineBtn" class="w-full bg-amber-500 text-white font-bold py-2 px-4 rounded-md hover:bg-amber-600 transition duration-300 shadow-sm text-sm">
-+                                Edit Tear Lines
-+                            </button>
-+                        </div>
-+                    </div>
-+                </div>
-+
-+                <!-- Export -->
-+                <div class="pt-4 border-t border-slate-200">
-+                     <h3 class="text-md font-semibold text-slate-800 mb-3">Export Dieline</h3>
-+                    <div class="flex flex-col space-y-3">
-+                        <button id="exportSVG" class="w-full bg-slate-700 text-white font-bold py-2 px-4 rounded-md hover:bg-slate-800 transition duration-300 shadow-sm">
-+                            Download SVG
-+                        </button>
-+                        <button id="exportPDF" class="w-full bg-green-600 text-white font-bold py-2 px-4 rounded-md hover:bg-green-700 transition duration-300 shadow-sm">
-+                            Download PDF
-+                        </button>
-+                    </div>
-+                </div>
-+            </div>
-+        </aside>
-+
-+        <!-- Main Content Area -->
-+        <main class="flex-1 p-4 md:p-8 bg-slate-50 flex items-center justify-center">
-+            <div class="w-full h-full relative">
-+                <h2 class="text-xl font-semibold mb-4 text-center text-slate-700">2D Dieline Preview</h2>
-+                <div class="canvas-container shadow-lg">
-+                     <canvas id="dielineCanvas"></canvas>
-+                </div>
-+                <div class="zoom-controls">
-+                    <button id="zoomInBtn" class="zoom-btn">+</button>
-+                    <button id="zoomOutBtn" class="zoom-btn">-</button>
-+                    <button id="zoomResetBtn" class="zoom-btn">⟲</button>
-+                </div>
-+            </div>
-+        </main>
-+    </div>
-+
-+    <!-- Template Selection Modal -->
-+    <div id="templateModal" class="modal fixed inset-0 bg-black bg-opacity-50 items-center justify-center p-4 z-50">
-+        <div class="bg-white rounded-xl shadow-2xl w-full max-w-4xl max-h-[90vh] overflow-y-auto p-8">
-+            <div class="flex flex-col sm:flex-row sm:justify-between sm:items-center border-b pb-4 mb-6 gap-4">
-+                <h2 class="text-2xl font-bold text-slate-800 flex-1">Select a Dieline Template</h2>
-+                <input type="text" id="templateSearch" placeholder="Search templates" class="border rounded-md p-2 text-sm w-full sm:w-1/3">
-+                <div class="flex gap-2 items-center">
-+                    <input type="file" id="templateUpload" accept=".svg" class="text-sm">
-+                    <button id="closeModalBtn" class="text-2xl text-slate-500 hover:text-slate-800">&times;</button>
-+                </div>
-+            </div>
-+            <div id="template-grid" class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-6">
-+                <!-- Template cards will be injected here by JS -->
-+            </div>
-+        </div>
-+    </div>
-+
-+    <script>
-+        // --- TEMPLATE DATA ---
-+        const templates = [
-+            { id: 'rte', name: 'Reverse Tuck End', img: 'https://placehold.co/200x200/e2e8f0/475569?text=RTE' }
-+        ];
-+        const uploadedTemplates = [];
-+
-+        // --- GLOBAL STATE & ELEMENTS ---
-+        let state = {
-+            boxType: 'rte',
-+            unit: 'in',
-+            ppi: 72,
-+            tearAwayLines: [],
-+            isEditingTearLine: false,
-+            draggingVertex: null, // {lineIndex, vertexIndex}
-+            transform: { x: 0, y: 0, scale: 1 },
-+            pan: { x: 0, y: 0, active: false, startX: 0, startY: 0 }
-+        };
-+
-+        const elements = {
-+            length: document.getElementById('length'),
-+            width: document.getElementById('width'),
-+            height: document.getElementById('height'),
-+            thickness: document.getElementById('thickness'),
-+            paperType: document.getElementById('paperType'),
-+            fluteType: document.getElementById('fluteType'),
-+            fluteTypeContainer: document.getElementById('fluteTypeContainer'),
-+            glueFlap: document.getElementById('glueFlap'),
-+            topTuckFlap: document.getElementById('topTuckFlap'),
-+            bottomTuckFlap: document.getElementById('bottomTuckFlap'),
-+            topDustFlap: document.getElementById('topDustFlap'),
-+            bottomDustFlap: document.getElementById('bottomDustFlap'),
-+            bleed: document.getElementById('bleed'),
-+            safety: document.getElementById('safety'),
-+            tearAway: document.getElementById('tearAway'),
-+            tearAwayEditContainer: document.getElementById('tearAwayEditContainer'),
-+            addTearLineBtn: document.getElementById('addTearLineBtn'),
-+            editTearLineBtn: document.getElementById('editTearLineBtn'),
-+            unitInBtn: document.getElementById('unitIn'),
-+            unitMmBtn: document.getElementById('unitMm'),
-+            unitLabel: document.getElementById('unitLabel'),
-+            dielineCanvas: document.getElementById('dielineCanvas'),
-+            modal: document.getElementById('templateModal'),
-+            templateGrid: document.getElementById('template-grid'),
-+            changeTemplateBtn: document.getElementById('changeTemplateBtn'),
-+            closeModalBtn: document.getElementById('closeModalBtn'),
-+            selectedTemplateName: document.getElementById('selectedTemplateName'),
-+            exportSVG: document.getElementById('exportSVG'),
-+            exportPDF: document.getElementById('exportPDF'),
-+            zoomInBtn: document.getElementById('zoomInBtn'),
-+            zoomOutBtn: document.getElementById('zoomOutBtn'),
-+            zoomResetBtn: document.getElementById('zoomResetBtn'),
-+            templateSearch: document.getElementById('templateSearch'),
-+            templateUpload: document.getElementById('templateUpload'),
-+            overallWidth: document.getElementById('overallWidth'),
-+            overallHeight: document.getElementById('overallHeight')
-+        };
-+        const ctx = elements.dielineCanvas.getContext('2d');
-+        let dielinePaths = [];
-+
-+        // --- CONSTANTS ---
-+        const CUT_COLOR = '#000000';
-+        const CREASE_COLOR = '#FF0000';
-+        const PERFORATION_COLOR = '#FF0000'; // Dashed Red
-+        const DIM_COLOR = '#0000FF';
-+        const BLEED_COLOR = '#00FF00';
-+        const SAFETY_COLOR = '#00FFFF';
-+        const INCH_TO_MM = 25.4;
-+
-+        // --- CORE LOGIC ---
-+        function getDimensions() {
-+            let l = Math.max(0.1, parseFloat(elements.length.value) || 0);
-+            let w = Math.max(0.1, parseFloat(elements.width.value) || 0);
-+            let h = Math.max(0.1, parseFloat(elements.height.value) || 0);
-+            let glueFlap = Math.max(0.1, parseFloat(elements.glueFlap.value) || 0);
-+            let topTuck = Math.max(0.1, parseFloat(elements.topTuckFlap.value) || 0);
-+            let bottomTuck = Math.max(0.1, parseFloat(elements.bottomTuckFlap.value) || 0);
-+            let topDust = Math.max(0.1, parseFloat(elements.topDustFlap.value) || 0);
-+            let bottomDust = Math.max(0.1, parseFloat(elements.bottomDustFlap.value) || 0);
-+            let bleed = Math.max(0, parseFloat(elements.bleed.value) || 0);
-+            let safety = Math.max(0, parseFloat(elements.safety.value) || 0);
-+            const originalL = l, originalW = w, originalH = h;
-+            if (state.unit === 'mm') {
-+                l /= INCH_TO_MM; w /= INCH_TO_MM; h /= INCH_TO_MM;
-+                glueFlap /= INCH_TO_MM; topTuck /= INCH_TO_MM; bottomTuck /= INCH_TO_MM;
-+                topDust /= INCH_TO_MM; bottomDust /= INCH_TO_MM; bleed /= INCH_TO_MM; safety /= INCH_TO_MM;
-+            }
-+            
-+            let thicknessPt = parseFloat(elements.thickness.value) || 0;
-+            if (elements.paperType.value === 'corrugated') {
-+                const selectedFlute = elements.fluteType.options[elements.fluteType.selectedIndex];
-+                thicknessPt = parseFloat(selectedFlute.dataset.thickness) || 0;
-+            }
-+            const t = thicknessPt / 1000;
-+            const tearAway = elements.tearAway.checked;
-+            return { l, w, h, t, glueFlap, topTuck, bottomTuck, topDust, bottomDust, bleed, safety, tearAway, oL: originalL, oW: originalW, oH: originalH };
-+        }
-+        
-+        function draw() {
-+            const params = getDimensions();
-+            const dims = getDielineDimensions(params);
-+            elements.overallWidth.value = `${(state.unit === 'mm' ? dims.totalWidth*INCH_TO_MM : dims.totalWidth).toFixed(2)} ${state.unit}`;
-+            elements.overallHeight.value = `${(state.unit === 'mm' ? dims.totalHeight*INCH_TO_MM : dims.totalHeight).toFixed(2)} ${state.unit}`;
-+            drawDieline(params);
-+        }
-+
-+        function drawDieline(params) {
-+            dielinePaths = []; 
-+            const { l, w, h } = params;
-+            const { totalWidth, totalHeight } = getDielineDimensions(params);
-+            const parent = elements.dielineCanvas.parentElement;
-+            
-+            elements.dielineCanvas.width = parent.clientWidth;
-+            elements.dielineCanvas.height = parent.clientHeight;
-+            ctx.clearRect(0, 0, parent.clientWidth, parent.clientHeight);
-+            
-+            const scale = Math.min((parent.clientWidth * 0.8) / (totalWidth * 72), (parent.clientHeight * 0.8) / (totalHeight * 72));
-+            state.ppi = 72 * scale * state.transform.scale;
-+            const offsetX = (parent.clientWidth - (totalWidth * state.ppi)) / 2 + state.pan.x;
-+            const offsetY = (parent.clientHeight - (totalHeight * state.ppi)) / 2 + state.pan.y;
-+            state.transform.x = offsetX;
-+            state.transform.y = offsetY;
-+
-+            ctx.save();
-+            ctx.translate(offsetX, offsetY);
-+            params.ppi = state.ppi;
-+            const drawer = dielineDrawers[state.boxType];
-+            if(drawer) drawer(params);
-+
-+            if (state.isEditingTearLine) {
-+                state.tearAwayLines.forEach(line => {
-+                    line.forEach(v => {
-+                        ctx.fillStyle = 'rgba(255, 193, 7, 0.8)';
-+                        ctx.beginPath();
-+                        ctx.arc(v[0], v[1], 5 / state.transform.scale, 0, 2 * Math.PI);
-+                        ctx.fill();
-+                    });
-+                });
-+            }
-+            ctx.restore();
-+        }
-+
-+        // --- DIELINE LIBRARY ---
-+        const dielineDrawers = {
-+            rte: ({ l, w, h, t, glueFlap, topTuck, bottomTuck, topDust, bottomDust, tearAway, bleed, safety, ppi, oL, oW, oH }) => {
-+                const lp = l * ppi, wp = (w - t) * ppi, hp = h * ppi;
-+                const glueFlapWidth = glueFlap * ppi;
-+                const topTuckFlapHeight = topTuck * ppi;
-+                const bottomTuckFlapHeight = bottomTuck * ppi;
-+                const topDustFlapHeight = topDust * ppi;
-+                const bottomDustFlapHeight = bottomDust * ppi;
-+                
-+                let x = glueFlapWidth, y = topTuckFlapHeight;
-+                const topExtension = Math.max(topTuckFlapHeight, topDustFlapHeight);
-+                const bottomExtension = Math.max(bottomTuckFlapHeight, bottomDustFlapHeight);
-+                const dielineWidth = glueFlapWidth + 2 * lp + 2 * wp;
-+                const dielineHeight = hp + topExtension + bottomExtension;
-+                const topLeftX = 0;
-+                const topLeftY = y - topExtension;
-+                drawBleedSafety(topLeftX, topLeftY, dielineWidth, dielineHeight, bleed * ppi, safety * ppi);
-+
-+                drawPath(CUT_COLOR, [[x, y], [x - glueFlapWidth, y + 0.1*ppi], [x - glueFlapWidth, y + hp - 0.1*ppi], [x, y + hp]]);
-+                drawPath(CREASE_COLOR, [[x, y], [x, y + hp]]);
-+
-+                const backX = x;
-+                drawPanel(x, y, lp, hp);
-+                drawIndustryTuckFlap(x, y + hp, lp, bottomTuckFlapHeight, false); 
-+                drawIndustryDustFlaps(x + lp, y, wp, bottomDustFlapHeight, hp, false);
-+                drawIndustryDustFlaps(x + lp, y, wp, topDustFlapHeight, hp, true);
-+                x += lp;
-+
-+                const sideLeftX = x;
-+                drawPanel(x, y, wp, hp);
-+                drawIndustryDustFlaps(x, y, wp, topDustFlapHeight, hp, true);
-+                drawIndustryDustFlaps(x, y, wp, bottomDustFlapHeight, hp, false);
-+                x += wp;
-+                
-+                const frontX = x;
-+                drawPanel(x, y, lp, hp);
-+                drawIndustryTuckFlap(x, y, lp, topTuckFlapHeight, true);
-+                drawIndustryDustFlaps(x - wp, y, wp, topDustFlapHeight, hp, true);
-+                drawIndustryDustFlaps(x - wp, y, wp, bottomDustFlapHeight, hp, false);
-+                
-+                if (tearAway) {
-+                    state.tearAwayLines.forEach(line => {
-+                        drawPath(PERFORATION_COLOR, line, true);
-+                    });
-+                }
-+                x += lp;
-+
-+                drawPanel(x, y, wp, hp);
-+                drawIndustryDustFlaps(x, y, wp, topDustFlapHeight, hp, true);
-+                drawIndustryDustFlaps(x, y, wp, bottomDustFlapHeight, hp, false);
-+
-+                drawDimension(backX, y + hp + bottomExtension + 20, backX + lp, y + hp + bottomExtension + 20, `${oL.toFixed(2)} ${state.unit}`, 'bottom');
-+                drawDimension(sideLeftX, y - topExtension - 20, sideLeftX + wp, y - topExtension - 20, `${oW.toFixed(2)} ${state.unit}`, 'top');
-+                drawDimension(frontX + lp + wp + 20, y - topExtension, frontX + lp + wp + 20, y - topExtension + hp, `${oH.toFixed(2)} ${state.unit}`, 'right');
-+            }
-+        };
-+
-+        // --- HELPERS ---
-+        function drawPanel(x, y, w, h) { drawPath(CREASE_COLOR, [[x, y], [x, y + h], [x + w, y + h], [x + w, y], [x, y]]); }
-+        function drawIndustryTuckFlap(x, y, width, height, isTop) {
-+            const dir = isTop ? -1 : 1;
-+            const sideTaper = width * 0.05;
-+            const lockRadius = height * 0.1;
-+            
-+            const p1 = [x, y];
-+            const p2 = [x + sideTaper, y + dir * height];
-+            const p3 = [x + width - sideTaper, y + dir * height];
-+            const p4 = [x + width, y];
-+            
-+            drawPath(CUT_COLOR, [p1, p2, p3, p4]);
-+            
-+            const lockY = y + dir * (height * 0.5);
-+            const lockP1 = [x + width * 0.4, lockY];
-+            const lockP2 = [x + width * 0.4, lockY - dir * lockRadius*2];
-+            const lockP3 = [x + width * 0.6, lockY - dir * lockRadius*2];
-+            const lockP4 = [x + width * 0.6, lockY];
-+            drawPath(CUT_COLOR, [lockP1, lockP2, lockP3, lockP4]);
-+        }
-+        function drawIndustryDustFlaps(x, y, panelWidth, flapHeight, panelHeight, isTop) {
-+            const dir = isTop ? -1 : 1;
-+            const startY = isTop ? y : y + panelHeight;
-+            const taper = panelWidth * 0.1;
-+            const points = [[x, startY], [x, startY + dir * flapHeight], [x + panelWidth - taper, startY + dir * flapHeight], [x + panelWidth, startY]];
-+            drawPath(CUT_COLOR, points);
-+        }
-+        function drawBleedSafety(x, y, w, h, bleed, safety) {
-+            const bleedRect = [[x - bleed, y - bleed], [x - bleed, y + h + bleed], [x + w + bleed, y + h + bleed], [x + w + bleed, y - bleed], [x - bleed, y - bleed]];
-+            drawPath(BLEED_COLOR, bleedRect, true);
-+            const safetyRect = [[x + safety, y + safety], [x + safety, y + h - safety], [x + w - safety, y + h - safety], [x + w - safety, y + safety], [x + safety, y + safety]];
-+            drawPath(SAFETY_COLOR, safetyRect, true);
-+        }
-+        function drawPath(color, points, isDashed = false) {
-+            dielinePaths.push({ color, points, isDashed });
-+            ctx.strokeStyle = color;
-+            ctx.lineWidth = 1;
-+            if (isDashed) {
-+                if(color === CREASE_COLOR) ctx.setLineDash([10, 3, 3, 3]);
-+                else ctx.setLineDash([5, 5]);
-+            } else {
-+                ctx.setLineDash([]);
-+            }
-+            ctx.beginPath();
-+            ctx.moveTo(points[0][0], points[0][1]);
-+            for (let i = 1; i < points.length; i++) ctx.lineTo(points[i][0], points[i][1]);
-+            if (points.length > 2 && Math.hypot(points[0][0] - points[points.length-1][0], points[0][1] - points[points.length-1][1]) < 1) ctx.closePath();
-+            ctx.stroke();
-+        }
-+        function drawDimension(x1, y1, x2, y2, text, position) {
-+            const offset = 40;
-+            ctx.strokeStyle = DIM_COLOR;
-+            ctx.fillStyle = DIM_COLOR;
-+            ctx.lineWidth = 0.5;
-+            ctx.font = "10px Inter";
-+            ctx.textAlign = "center";
-+            ctx.textBaseline = "middle";
-+
-+            if (position === 'bottom') {
-+                drawPath(DIM_COLOR, [[x1, y1], [x1, y1 + offset], [x2, y1 + offset], [x2, y1]]);
-+                ctx.fillText(text, (x1 + x2) / 2, y1 + offset + 10);
-+            } else if (position === 'top') {
-+                drawPath(DIM_COLOR, [[x1, y1], [x1, y1 - offset], [x2, y1 - offset], [x2, y1]]);
-+                ctx.fillText(text, (x1 + x2) / 2, y1 - offset - 10);
-+            } else if (position === 'right') {
-+                drawPath(DIM_COLOR, [[x1, y1], [x1 + offset, y1], [x1 + offset, y2], [x1, y2]]);
-+                ctx.save();
-+                ctx.translate(x1 + offset + 10, (y1 + y2) / 2);
-+                ctx.rotate(-Math.PI / 2);
-+                ctx.fillText(text, 0, 0);
-+                ctx.restore();
-+            }
-+        }
-+        function getDielineDimensions({l, w, h, topTuck, bottomTuck, glueFlap, topDust, bottomDust}) {
-+            const totalWidth = 2 * l + 2 * w + glueFlap;
-+            const totalHeight = h + Math.max(topTuck, topDust) + Math.max(bottomTuck, bottomDust);
-+            return { totalWidth, totalHeight };
-+        }
-+
-+        // --- EXPORT ---
-+        function exportVector(format) {
-+            const params = getDimensions();
-+            const { totalWidth, totalHeight } = getDielineDimensions(params, state.boxType);
-+            const originalPPI = 72;
-+            const exportWidth = totalWidth * originalPPI;
-+            const exportHeight = totalHeight * originalPPI;
-+            const exportScale = originalPPI / state.ppi;
-+
-+            if (format === 'svg') {
-+                let svgString = `<svg xmlns="http://www.w3.org/2000/svg" width="${exportWidth}" height="${exportHeight}" viewBox="0 0 ${exportWidth} ${exportHeight}">\n`;
-+                dielinePaths.forEach(path => {
-+                    const pointsStr = path.points.map(p => `${p[0] * exportScale},${p[1] * exportScale}`).join(' ');
-+                    let dashArray = '';
-+                    if (path.isDashed) {
-+                        dashArray = path.color === CREASE_COLOR ? 'stroke-dasharray="10,3,3,3"' : 'stroke-dasharray="5,5"';
-+                    }
-+                    svgString += `  <polyline points="${pointsStr}" fill="none" stroke="${path.color}" stroke-width="1pt" ${dashArray}/>\n`;
-+                });
-+                svgString += '</svg>';
-+                downloadFile(svgString, 'dieline.svg', 'image/svg+xml');
-+            } else if (format === 'pdf') {
-+                const { jsPDF } = window.jspdf;
-+                const doc = new jsPDF({ unit: 'pt', format: [exportWidth, exportHeight] });
-+                dielinePaths.forEach(path => {
-+                    doc.setDrawColor(path.color.substring(1));
-+                    doc.setLineWidth(1);
-+                    if (path.isDashed) {
-+                        doc.setLineDashPattern(path.color === CREASE_COLOR ? [10, 3, 3, 3] : [5, 5], 0);
-+                    } else {
-+                        doc.setLineDashPattern([], 0);
-+                    }
-+                    for (let i = 0; i < path.points.length - 1; i++) {
-+                        const p1 = path.points[i];
-+                        const p2 = path.points[i+1];
-+                        doc.line(p1[0] * exportScale, p1[1] * exportScale, p2[0] * exportScale, p2[1] * exportScale);
-+                    }
-+                });
-+                doc.save('dieline.pdf');
-+            }
-+        }
-+
-+        function downloadFile(data, filename, type) {
-+            const blob = new Blob([data], {type});
-+            const url = URL.createObjectURL(blob);
-+            const a = document.createElement('a');
-+            a.href = url;
-+            a.download = filename;
-+            a.click();
-+            URL.revokeObjectURL(url);
-+        }
-+
-+        // --- TEAR LINE EDITING ---
-+        function getSnappedPoint(x, y) {
-+            const threshold = 10;
-+            let nearest = { x, y, dist: threshold };
-+            dielinePaths.forEach(path => {
-+                if (path.color === CUT_COLOR || path.color === CREASE_COLOR) {
-+                    for (let i = 0; i < path.points.length - 1; i++) {
-+                        const a = { x: path.points[i][0], y: path.points[i][1] };
-+                        const b = { x: path.points[i+1][0], y: path.points[i+1][1] };
-+                        const proj = projectPoint(a, b, {x, y});
-+                        const d = Math.hypot(proj.x - x, proj.y - y);
-+                        if (d < nearest.dist) {
-+                            nearest = { x: proj.x, y: proj.y, dist: d };
-+                        }
-+                    }
-+                }
-+            });
-+            return [nearest.x, nearest.y];
-+        }
-+        function projectPoint(a, b, p) {
-+            const apx = p.x - a.x, apy = p.y - a.y;
-+            const abx = b.x - a.x, aby = b.y - a.y;
-+            const ab2 = abx*abx + aby*aby;
-+            const t = Math.max(0, Math.min(1, (apx*abx + apy*aby) / ab2));
-+            return { x: a.x + abx*t, y: a.y + aby*t };
-+        }
-+
-+        // --- EVENT LISTENERS & INITIALIZATION ---
-+        function setupEventListeners() {
-+            Object.keys(elements).forEach(key => {
-+                const el = elements[key];
-+                if (el && (el.tagName === 'INPUT' || el.tagName === 'SELECT')) {
-+                    el.addEventListener('input', () => {
-+                        if (key !== 'tearAway') state.tearAwayLines = [];
-+                        draw();
-+                    });
-+                }
-+            });
-+            elements.unitInBtn.addEventListener('click', () => switchUnit('in'));
-+            elements.unitMmBtn.addEventListener('click', () => switchUnit('mm'));
-+            elements.changeTemplateBtn.addEventListener('click', () => elements.modal.classList.add('is-open'));
-+            elements.closeModalBtn.addEventListener('click', () => elements.modal.classList.remove('is-open'));
-+            elements.exportSVG.addEventListener('click', () => exportVector('svg'));
-+            elements.exportPDF.addEventListener('click', () => exportVector('pdf'));
-+            elements.paperType.addEventListener('change', handlePaperChange);
-+            elements.tearAway.addEventListener('change', handleTearAwayChange);
-+            elements.addTearLineBtn.addEventListener('click', addTearLine);
-+            elements.editTearLineBtn.addEventListener('click', toggleTearLineEdit);
-+            elements.dielineCanvas.addEventListener('mousedown', handleCanvasMouseDown);
-+            elements.dielineCanvas.addEventListener('mousemove', handleCanvasMouseMove);
-+            elements.dielineCanvas.addEventListener('mouseup', handleCanvasMouseUp);
-+            elements.dielineCanvas.addEventListener('wheel', handleCanvasWheel, {passive:false});
-+            elements.zoomInBtn.addEventListener('click', () => zoom(1.2));
-+            elements.zoomOutBtn.addEventListener('click', () => zoom(0.8));
-+            elements.zoomResetBtn.addEventListener('click', zoomReset);
-+            window.addEventListener('resize', draw);
-+            elements.templateSearch.addEventListener('input', filterTemplates);
-+            elements.templateUpload.addEventListener('change', handleTemplateUpload);
-+        }
-+        
-+        function handlePaperChange() {
-+            const selected = elements.paperType.options[elements.paperType.selectedIndex];
-+            if (elements.paperType.value === 'corrugated') {
-+                elements.fluteTypeContainer.classList.remove('hidden');
-+                const selectedFlute = elements.fluteType.options[elements.fluteType.selectedIndex];
-+                elements.thickness.value = selectedFlute.dataset.thickness;
-+                elements.thickness.disabled = true;
-+            } else {
-+                elements.fluteTypeContainer.classList.add('hidden');
-+                elements.thickness.value = selected.dataset.thickness;
-+                elements.thickness.disabled = false;
-+            }
-+            draw();
-+        }
-+
-+        function handleTearAwayChange() {
-+            elements.tearAwayEditContainer.classList.toggle('hidden', !elements.tearAway.checked);
-+            state.tearAwayLines = [];
-+            if (state.isEditingTearLine) {
-+                toggleTearLineEdit();
-+            }
-+            draw();
-+        }
-+
-+        function addTearLine() {
-+            if (state.tearAwayLines.length >= 4) return;
-+            const { ppi } = state;
-+            const newLine = [[1 * ppi, 1 * ppi], [2 * ppi, 1 * ppi]];
-+            state.tearAwayLines.push(newLine);
-+            draw();
-+        }
-+
-+        function toggleTearLineEdit() {
-+            state.isEditingTearLine = !state.isEditingTearLine;
-+            elements.editTearLineBtn.textContent = state.isEditingTearLine ? 'Finish Editing' : 'Edit Tear Lines';
-+            elements.dielineCanvas.classList.toggle('editing', state.isEditingTearLine);
-+            draw();
-+        }
-+
-+        function handleCanvasMouseDown(e) {
-+            if (state.isEditingTearLine) {
-+                const rect = elements.dielineCanvas.getBoundingClientRect();
-+                const mouseX = (e.clientX - rect.left - state.transform.x) / state.transform.scale / 72 * state.ppi;
-+                const mouseY = (e.clientY - rect.top - state.transform.y) / state.transform.scale / 72 * state.ppi;
-+
-+                for (let i = 0; i < state.tearAwayLines.length; i++) {
-+                    for (let j = 0; j < state.tearAwayLines[i].length; j++) {
-+                        const v = state.tearAwayLines[i][j];
-+                        if (Math.hypot(v[0] - mouseX, v[1] - mouseY) < 10) {
-+                            state.draggingVertex = { lineIndex: i, vertexIndex: j };
-+                            return;
-+                        }
-+                    }
-+                }
-+            } else {
-+                state.pan.active = true;
-+                state.pan.startX = e.clientX;
-+                state.pan.startY = e.clientY;
-+            }
-+        }
-+
-+        function handleCanvasMouseMove(e) {
-+            if (state.draggingVertex) {
-+                const rect = elements.dielineCanvas.getBoundingClientRect();
-+                const rawX = (e.clientX - rect.left - state.transform.x) / state.transform.scale / 72 * state.ppi;
-+                const rawY = (e.clientY - rect.top - state.transform.y) / state.transform.scale / 72 * state.ppi;
-+                const [sx, sy] = getSnappedPoint(rawX, rawY);
-+                state.tearAwayLines[state.draggingVertex.lineIndex][state.draggingVertex.vertexIndex] = [sx, sy];
-+                draw();
-+            } else if (state.pan.active) {
-+                const dx = e.clientX - state.pan.startX;
-+                const dy = e.clientY - state.pan.startY;
-+                state.pan.x += dx;
-+                state.pan.y += dy;
-+                state.pan.startX = e.clientX;
-+                state.pan.startY = e.clientY;
-+                draw();
-+            }
-+        }
-+
-+        function handleCanvasMouseUp() {
-+            state.draggingVertex = null;
-+            state.pan.active = false;
-+        }
-+
-+        function handleCanvasWheel(e) {
-+            e.preventDefault();
-+            const delta = e.deltaY > 0 ? 0.9 : 1.1;
-+            zoom(delta);
-+        }
-+
-+        function zoom(factor) {
-+            state.transform.scale *= factor;
-+            draw();
-+        }
-+
-+        function zoomReset() {
-+            state.transform.scale = 1;
-+            state.pan.x = 0;
-+            state.pan.y = 0;
-+            draw();
-+        }
-+
-+        function switchUnit(unit) {
-+            if (state.unit === unit) return;
-+            const inputs = ['length', 'width', 'height', 'glueFlap', 'topTuckFlap', 'bottomTuckFlap', 'topDustFlap', 'bottomDustFlap', 'bleed', 'safety'];
-+            inputs.forEach(id => {
-+                const el = elements[id];
-+                let val = parseFloat(el.value);
-+                if (unit === 'mm') {
-+                    el.value = (val * INCH_TO_MM).toFixed(1);
-+                } else {
-+                    el.value = (val / INCH_TO_MM).toFixed(2);
-+                }
-+            });
-+            
-+            state.unit = unit;
-+            elements.unitLabel.textContent = unit === 'mm' ? 'mm' : 'inches';
-+            elements.unitMmBtn.classList.toggle('bg-indigo-500', unit === 'mm');
-+            elements.unitMmBtn.classList.toggle('text-white', unit === 'mm');
-+            elements.unitMmBtn.classList.toggle('bg-white', unit !== 'mm');
-+            elements.unitInBtn.classList.toggle('bg-indigo-500', unit === 'in');
-+            elements.unitInBtn.classList.toggle('text-white', unit === 'in');
-+            elements.unitInBtn.classList.toggle('bg-white', unit !== 'in');
-+            draw();
-+        }
-+
-+        function populateTemplateGrid() {
-+            elements.templateGrid.innerHTML = '';
-+            templates.concat(uploadedTemplates).forEach(template => {
-+                if (template.hidden) return;
-+                const card = document.createElement('div');
-+                card.className = 'template-card border rounded-lg p-2 text-center cursor-pointer';
-+                card.dataset.id = template.id;
-+                card.innerHTML = `
-+                    <img src="${template.img || 'https://placehold.co/200x200/e2e8f0/475569?text=CAD'}" alt="${template.name}" class="w-full h-auto object-cover rounded-md mb-2 bg-slate-100" onerror="this.style.display='none'">
-+                    <p class="text-sm font-medium text-slate-700">${template.name}</p>
-+                `;
-+                card.addEventListener('click', () => selectTemplate(template.id));
-+                elements.templateGrid.appendChild(card);
-+            });
-+        }
-+
-+        function selectTemplate(id) {
-+            state.boxType = id;
-+            const template = templates.concat(uploadedTemplates).find(t => t.id === id);
-+            elements.selectedTemplateName.textContent = template.name;
-+            document.querySelectorAll('.template-card').forEach(c => c.classList.remove('selected'));
-+            const card = document.querySelector(`.template-card[data-id="${id}"]`);
-+            if (card) card.classList.add('selected');
-+            elements.modal.classList.remove('is-open');
-+            draw();
-+        }
-+
-+        function filterTemplates() {
-+            const term = elements.templateSearch.value.toLowerCase();
-+            templates.concat(uploadedTemplates).forEach(t => {
-+                t.hidden = !t.name.toLowerCase().includes(term);
-+            });
-+            populateTemplateGrid();
-+        }
-+
-+        function handleTemplateUpload(e) {
-+            const file = e.target.files[0];
-+            if (!file) return;
-+            const reader = new FileReader();
-+            reader.onload = evt => {
-+                const paths = parseUploadedSVG(evt.target.result);
-+                const id = `upload-${uploadedTemplates.length}`;
-+                uploadedTemplates.push({ id, name: file.name, paths });
-+                dielineDrawers[id] = () => {
-+                    paths.forEach(p => drawPath(p.color || CUT_COLOR, p.points, p.isDashed || false));
-+                };
-+                populateTemplateGrid();
-+            };
-+            reader.readAsText(file);
-+        }
-+
-+        function parseUploadedSVG(svgText) {
-+            const parser = new DOMParser();
-+            const doc = parser.parseFromString(svgText, 'image/svg+xml');
-+            const polylines = doc.querySelectorAll('polyline');
-+            const result = [];
-+            polylines.forEach(pl => {
-+                const pts = pl.getAttribute('points').trim().split(/\s+/).map(pt => pt.split(',').map(Number));
-+                result.push({ color: pl.getAttribute('stroke') || CUT_COLOR, points: pts, isDashed: pl.getAttribute('stroke-dasharray') ? true : false });
-+            });
-+            return result;
-+        }
-+
-+        window.onload = () => {
-+            populateTemplateGrid();
-+            selectTemplate('rte');
-+            setupEventListeners();
-+            handlePaperChange();
-+            draw();
-+        };
-+
-+    </script>
-+</body>
-+</html>
- 
-EOF
-)
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Professional Dieline Generator</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f8fafc; /* slate-50 */
+        }
+        .template-card {
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+        .template-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+        }
+        .template-card.selected {
+            box-shadow: 0 0 0 3px #4f46e5; /* indigo-600 */
+            border-color: #4f46e5;
+        }
+        .modal {
+            display: none; /* Hidden by default */
+        }
+        .modal.is-open {
+            display: flex; /* Show when open */
+        }
+        .control-panel {
+            height: fit-content;
+        }
+        .canvas-container {
+            border: 1px solid #e2e8f0; /* slate-200 */
+            border-radius: 0.5rem;
+            overflow: hidden;
+            position: relative;
+            background-color: #ffffff;
+            width: 100%;
+            height: 100%;
+        }
+        #dielineCanvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            cursor: default;
+        }
+        #dielineCanvas.editing {
+            cursor: move;
+        }
+        .zoom-controls {
+            position: absolute;
+            bottom: 1rem;
+            right: 1rem;
+            display: flex;
+            gap: 0.5rem;
+            background-color: rgba(255, 255, 255, 0.8);
+            padding: 0.5rem;
+            border-radius: 0.5rem;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .zoom-btn {
+            width: 2rem;
+            height: 2rem;
+            border-radius: 9999px;
+            background-color: #e2e8f0;
+            color: #475569;
+            font-weight: bold;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .file-upload-label {
+            display: block;
+            cursor: pointer;
+            text-align: center;
+            padding: 1rem;
+            border: 2px dashed #94a3b8;
+            border-radius: 0.5rem;
+            color: #64748b;
+        }
+        .file-upload-label:hover {
+            border-color: #4f46e5;
+            color: #4f46e5;
+        }
+        #fileInput {
+            display: none;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="flex flex-col lg:flex-row h-screen">
+        
+        <aside class="w-full lg:w-96 bg-white p-6 border-r border-slate-200 overflow-y-auto control-panel">
+            <h1 class="text-2xl font-bold text-slate-900">Dieline Generator</h1>
+            <p class="text-sm text-slate-500 mt-1 mb-6">Select a template to begin.</p>
+
+            <button id="changeTemplateBtn" class="w-full bg-indigo-600 text-white font-bold py-2 px-4 rounded-md hover:bg-indigo-700 transition duration-300 shadow-sm mb-6">
+                Choose Template
+            </button>
+
+            <div id="config-panel" class="space-y-6">
+                <div>
+                    <h3 class="text-lg font-semibold text-slate-800 mb-2" id="selectedTemplateName">Reverse Tuck End</h3>
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-slate-600">Units</label>
+                    <div class="mt-1 flex rounded-md shadow-sm">
+                        <button id="unitIn" class="w-full px-4 py-2 border border-slate-300 bg-indigo-500 text-white text-sm font-medium rounded-l-md">in</button>
+                        <button id="unitMm" class="w-full px-4 py-2 border border-slate-300 bg-white text-slate-700 text-sm font-medium rounded-r-md -ml-px">mm</button>
+                    </div>
+                </div>
+
+                <div>
+                    <h3 class="text-md font-semibold text-slate-800 mb-2">Dimensions (<span id="unitLabel">inches</span>)</h3>
+                    <div class="space-y-3">
+                        <div>
+                            <label for="length" class="block text-xs font-medium text-slate-600">Length (L)</label>
+                            <input type="number" id="length" value="4" min="0.1" step="0.1" class="mt-1 w-full p-2 border border-slate-300 rounded-md shadow-sm text-sm">
+                        </div>
+                        <div>
+                            <label for="width" class="block text-xs font-medium text-slate-600">Width (W)</label>
+                            <input type="number" id="width" value="2" min="0.1" step="0.1" class="mt-1 w-full p-2 border border-slate-300 rounded-md shadow-sm text-sm">
+                        </div>
+                        <div>
+                            <label for="height" class="block text-xs font-medium text-slate-600">Height (H)</label>
+                            <input type="number" id="height" value="6" min="0.1" step="0.1" class="mt-1 w-full p-2 border border-slate-300 rounded-md shadow-sm text-sm">
+                        </div>
+                    </div>
+                </div>
+
+                <div>
+                    <h3 class="text-md font-semibold text-slate-800 mb-2">Material</h3>
+                    <div class="space-y-3">
+                        <div>
+                            <label for="paperType" class="block text-xs font-medium text-slate-600">Paper Type</label>
+                            <select id="paperType" class="mt-1 w-full p-2 border border-slate-300 rounded-md shadow-sm text-sm">
+                                <option value="white-cardboard" data-thickness="18">White Cardboard</option>
+                                <option value="kraft-paper" data-thickness="16">Kraft Paper</option>
+                                <option value="corrugated" data-thickness="0">Corrugated Fiberboard</option>
+                            </select>
+                        </div>
+                        <div id="fluteTypeContainer" class="hidden">
+                            <label for="fluteType" class="block text-xs font-medium text-slate-600">Flute Type</label>
+                            <select id="fluteType" class="mt-1 w-full p-2 border border-slate-300 rounded-md shadow-sm text-sm">
+                                <option value="E" data-thickness="63">E Flute (~1.6mm)</option>
+                                <option value="B" data-thickness="118">B Flute (~3.0mm)</option>
+                                <option value="C" data-thickness="157">C Flute (~4.0mm)</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label for="thickness" class="block text-xs font-medium text-slate-600">Custom Thickness (pt)</label>
+                            <input type="number" id="thickness" value="18" min="8" class="mt-1 w-full p-2 border border-slate-300 rounded-md shadow-sm text-sm">
+                        </div>
+                    </div>
+                </div>
+
+                <div>
+                    <h3 class="text-md font-semibold text-slate-800 mb-2">Advanced Options</h3>
+                    <div class="space-y-3">
+                        <div>
+                            <label for="glueFlap" class="block text-xs font-medium text-slate-600">Glue Flap Width</label>
+                            <input type="number" id="glueFlap" value="0.5" min="0.1" step="0.05" class="mt-1 w-full p-2 border border-slate-300 rounded-md shadow-sm text-sm">
+                        </div>
+                        <div>
+                            <label for="topTuckFlap" class="block text-xs font-medium text-slate-600">Top Tuck Flap Height</label>
+                            <input type="number" id="topTuckFlap" value="0.75" min="0.1" step="0.05" class="mt-1 w-full p-2 border border-slate-300 rounded-md shadow-sm text-sm">
+                        </div>
+                        <div>
+                            <label for="bottomTuckFlap" class="block text-xs font-medium text-slate-600">Bottom Tuck Flap Height</label>
+                            <input type="number" id="bottomTuckFlap" value="0.75" min="0.1" step="0.05" class="mt-1 w-full p-2 border border-slate-300 rounded-md shadow-sm text-sm">
+                        </div>
+                         <div>
+                            <label for="dustFlaps" class="block text-xs font-medium text-slate-600">Dust Flap Height</label>
+                            <input type="number" id="dustFlaps" value="0.5" min="0.1" step="0.05" class="mt-1 w-full p-2 border border-slate-300 rounded-md shadow-sm text-sm">
+                        </div>
+                        <div>
+                            <label for="bleed" class="block text-xs font-medium text-slate-600">Bleed</label>
+                            <input type="number" id="bleed" value="0.125" min="0" step="0.01" class="mt-1 w-full p-2 border border-slate-300 rounded-md shadow-sm text-sm">
+                        </div>
+                        <div>
+                            <label for="safety" class="block text-xs font-medium text-slate-600">Safety Margin</label>
+                            <input type="number" id="safety" value="0.125" min="0" step="0.01" class="mt-1 w-full p-2 border border-slate-300 rounded-md shadow-sm text-sm">
+                        </div>
+                        <div class="flex items-center">
+                            <input id="tearAway" type="checkbox" class="h-4 w-4 text-indigo-600 border-slate-300 rounded focus:ring-indigo-500">
+                            <label for="tearAway" class="ml-2 block text-sm text-slate-900">Add Tear-Away Panel</label>
+                        </div>
+                        <div id="tearAwayEditContainer" class="hidden space-y-2">
+                            <button id="addTearLineBtn" class="w-full bg-blue-500 text-white font-bold py-2 px-4 rounded-md hover:bg-blue-600 transition duration-300 shadow-sm text-sm">
+                                Add Tear Line
+                            </button>
+                             <button id="editTearLineBtn" class="w-full bg-amber-500 text-white font-bold py-2 px-4 rounded-md hover:bg-amber-600 transition duration-300 shadow-sm text-sm">
+                                Edit Tear Lines
+                            </button>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="pt-4 border-t border-slate-200">
+                    <h3 class="text-md font-semibold text-slate-800 mb-3">Upload Dieline</h3>
+                    <label for="fileInput" class="file-upload-label">
+                        <span class="text-sm font-semibold">Choose SVG File</span>
+                        <input type="file" id="fileInput" accept=".svg" class="hidden">
+                    </label>
+                </div>
+
+                <div class="pt-4 border-t border-slate-200">
+                    <h3 class="text-md font-semibold text-slate-800 mb-3">Export Dieline</h3>
+                    <div class="flex flex-col space-y-3">
+                        <button id="exportSVG" class="w-full bg-slate-700 text-white font-bold py-2 px-4 rounded-md hover:bg-slate-800 transition duration-300 shadow-sm">
+                            Download SVG
+                        </button>
+                        <button id="exportPDF" class="w-full bg-green-600 text-white font-bold py-2 px-4 rounded-md hover:bg-green-700 transition duration-300 shadow-sm">
+                            Download PDF
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </aside>
+
+        <main class="flex-1 p-4 md:p-8 bg-slate-50 flex items-center justify-center">
+            <div class="w-full h-full relative">
+                <h2 class="text-xl font-semibold mb-4 text-center text-slate-700">2D Dieline Preview</h2>
+                <div class="canvas-container shadow-lg">
+                    <canvas id="dielineCanvas"></canvas>
+                </div>
+                <div class="zoom-controls">
+                    <button id="zoomInBtn" class="zoom-btn">+</button>
+                    <button id="zoomOutBtn" class="zoom-btn">-</button>
+                    <button id="zoomResetBtn" class="zoom-btn">⟲</button>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <div id="templateModal" class="modal fixed inset-0 bg-black bg-opacity-50 items-center justify-center p-4 z-50">
+        <div class="bg-white rounded-xl shadow-2xl w-full max-w-4xl max-h-[90vh] overflow-y-auto p-8">
+            <div class="flex justify-between items-center border-b pb-4 mb-6">
+                <h2 class="text-2xl font-bold text-slate-800">Select a Dieline Template</h2>
+                <button id="closeModalBtn" class="text-2xl text-slate-500 hover:text-slate-800">&times;</button>
+            </div>
+            <div id="template-grid" class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-6">
+                </div>
+        </div>
+    </div>
+
+    <script>
+        // --- TEMPLATE DATA ---
+        const templates = [
+            { id: 'rte', name: 'Reverse Tuck End', img: 'data:image/svg+xml,%3Csvg xmlns=\'http://www.w3.org/2000/svg\' viewBox=\'0 0 200 200\'%3E%3Cpath fill=\'none\' stroke=\'#475569\' stroke-width=\'2\' d=\'M50,150h100M50,50h100M50,50v100M150,50v100M50,50L25,35M150,50L175,35M50,150L25,165M150,150L175,165\'/%3E%3Cpath fill=\'none\' stroke=\'#475569\' stroke-width=\'2\' stroke-dasharray=\'5,5\' d=\'M25,35v130M175,35v130\'/%3E%3C/svg%3E' },
+            { id: 'ste', name: 'Straight Tuck End', img: 'data:image/svg+xml,%3Csvg xmlns=\'http://www.w3.org/2000/svg\' viewBox=\'0 0 200 200\'%3E%3Cpath fill=\'none\' stroke=\'#475569\' stroke-width=\'2\' d=\'M50,150h100M50,50h100M50,50v100M150,50v100M50,50L25,35M150,50L175,35M50,150L25,165M150,150L175,165\'/%3E%3Cpath fill=\'none\' stroke=\'#475569\' stroke-width=\'2\' stroke-dasharray=\'5,5\' d=\'M25,35v130M175,35v130\'/%3E%3C/svg%3E' },
+            { id: 'slb', name: 'Snap Lock Bottom', img: 'data:image/svg+xml,%3Csvg xmlns=\'http://www.w3.org/2000/svg\' viewBox=\'0 0 200 200\'%3E%3Cpath fill=\'none\' stroke=\'#475569\' stroke-width=\'2\' d=\'M50,150h100M50,50h100M50,50v100M150,50v100M50,150L25,165M150,150L175,165\'/%3E%3Cpath fill=\'none\' stroke=\'#475569\' stroke-width=\'2\' stroke-dasharray=\'5,5\' d=\'M25,35v130M175,35v130M25,35L50,50M175,35L150,50\'/%3E%3Cpath fill=\'none\' stroke=\'#475569\' stroke-width=\'2\' d=\'M50,150h20M70,150v20M70,170h20M90,170v20M90,190h20M110,190v-20M110,170h20M130,170v-20M130,150h20\'/%3E%3C/svg%3E' },
+            { id: 'ttab', name: 'Tuck Top Auto Bottom', img: 'data:image/svg+xml,%3Csvg xmlns=\'http://www.w3.org/2000/svg\' viewBox=\'0 0 200 200\'%3E%3Cpath fill=\'none\' stroke=\'#475569\' stroke-width=\'2\' d=\'M50,150h100M50,50h100M50,50v100M150,50v100M50,150L25,165M150,150L175,165\'/%3E%3Cpath fill=\'none\' stroke=\'#475569\' stroke-width=\'2\' stroke-dasharray=\'5,5\' d=\'M25,35v130M175,35v130M25,35L50,50M175,35L150,50\'/%3E%3Cpath fill=\'none\' stroke=\'#475569\' stroke-width=\'2\' d=\'M50,150L75,165M75,165L125,165M125,165L150,150\'/%3E%3C/svg%3E' },
+            { id: 'mailer', name: 'Mailer Box', img: 'data:image/svg+xml,%3Csvg xmlns=\'http://www.w3.org/2000/svg\' viewBox=\'0 0 200 200\'%3E%3Cpath fill=\'none\' stroke=\'#475569\' stroke-width=\'2\' d=\'M20,100h160M100,20v160M20,100L50,70M180,100L150,70M20,100L50,130M180,100L150,130\'/%3E%3Cpath fill=\'none\' stroke=\'#475569\' stroke-width=\'2\' stroke-dasharray=\'5,5\' d=\'M50,70h100M50,130h100M50,70v60M150,70v60\'/%3E%3C/svg%3E' },
+            { id: 'sleeve', name: 'Product Sleeve', img: 'data:image/svg+xml,%3Csvg xmlns=\'http://www.w3.org/2000/svg\' viewBox=\'0 0 200 200\'%3E%3Cpath fill=\'none\' stroke=\'#475569\' stroke-width=\'2\' d=\'M10,100h180M50,100v-80M100,100v80M150,100v-80M10,100L50,20M50,20h100M150,20L190,100M10,100L50,180M50,180h100M150,180L190,100\'/%3E%3C/svg%3E' },
+            { id: 'hanger', name: 'Five-Panel Hanger', img: 'data:image/svg+xml,%3Csvg xmlns=\'http://www.w3.org/2000/svg\' viewBox=\'0 0 200 200\'%3E%3Cpath fill=\'none\' stroke=\'#475569\' stroke-width=\'2\' d=\'M20,150h160M20,50h160M20,50v100M180,50v100M50,50v100M150,50v100M80,20L120,20M80,20v30M120,20v30M100,20v-10\'/%3E%3C/svg%3E' },
+            { id: 'gable', name: 'Gable Box', img: 'data:image/svg+xml,%3Csvg xmlns=\'http://www.w3.org/2000/svg\' viewBox=\'0 0 200 200\'%3E%3Cpath fill=\'none\' stroke=\'#475569\' stroke-width=\'2\' d=\'M20,150h160M20,50h160M20,50v100M180,50v100M50,50v100M150,50v100M20,50L50,20M180,50L150,20M50,20h100M50,150L20,180M150,150L180,180M20,180h160\'/%3E%3C/svg%3E' },
+        ];
+
+        // --- GLOBAL STATE & ELEMENTS ---
+        let state = {
+            boxType: 'rte',
+            unit: 'in',
+            ppi: 72,
+            tearAwayLines: [],
+            isEditingTearLine: false,
+            draggingVertex: null, 
+            transform: { x: 0, y: 0, scale: 1 },
+            pan: { x: 0, y: 0, active: false, startX: 0, startY: 0 },
+            customDieline: null
+        };
+
+        const elements = {
+            length: document.getElementById('length'),
+            width: document.getElementById('width'),
+            height: document.getElementById('height'),
+            thickness: document.getElementById('thickness'),
+            paperType: document.getElementById('paperType'),
+            fluteType: document.getElementById('fluteType'),
+            fluteTypeContainer: document.getElementById('fluteTypeContainer'),
+            glueFlap: document.getElementById('glueFlap'),
+            topTuckFlap: document.getElementById('topTuckFlap'),
+            bottomTuckFlap: document.getElementById('bottomTuckFlap'),
+            dustFlaps: document.getElementById('dustFlaps'),
+            bleed: document.getElementById('bleed'),
+            safety: document.getElementById('safety'),
+            tearAway: document.getElementById('tearAway'),
+            tearAwayEditContainer: document.getElementById('tearAwayEditContainer'),
+            addTearLineBtn: document.getElementById('addTearLineBtn'),
+            editTearLineBtn: document.getElementById('editTearLineBtn'),
+            unitInBtn: document.getElementById('unitIn'),
+            unitMmBtn: document.getElementById('unitMm'),
+            unitLabel: document.getElementById('unitLabel'),
+            dielineCanvas: document.getElementById('dielineCanvas'),
+            modal: document.getElementById('templateModal'),
+            templateGrid: document.getElementById('template-grid'),
+            changeTemplateBtn: document.getElementById('changeTemplateBtn'),
+            closeModalBtn: document.getElementById('closeModalBtn'),
+            selectedTemplateName: document.getElementById('selectedTemplateName'),
+            exportSVG: document.getElementById('exportSVG'),
+            exportPDF: document.getElementById('exportPDF'),
+            zoomInBtn: document.getElementById('zoomInBtn'),
+            zoomOutBtn: document.getElementById('zoomOutBtn'),
+            zoomResetBtn: document.getElementById('zoomResetBtn'),
+            fileInput: document.getElementById('fileInput'),
+        };
+        const ctx = elements.dielineCanvas.getContext('2d');
+        let dielinePaths = [];
+        let uploadedPaths = [];
+
+        // --- CONSTANTS ---
+        const CUT_COLOR = '#000000';
+        const CREASE_COLOR = '#FF0000';
+        const PERFORATION_COLOR = '#0000FF'; 
+        const DIM_COLOR = '#00FF00';
+        const BLEED_COLOR = '#00FFFF';
+        const SAFETY_COLOR = '#FF00FF';
+        const INCH_TO_MM = 25.4;
+
+        // --- CORE LOGIC ---
+        function getDimensions() {
+            let l = Math.max(0.1, parseFloat(elements.length.value) || 0);
+            let w = Math.max(0.1, parseFloat(elements.width.value) || 0);
+            let h = Math.max(0.1, parseFloat(elements.height.value) || 0);
+            let glueFlap = Math.max(0.1, parseFloat(elements.glueFlap.value) || 0);
+            let topTuck = Math.max(0.1, parseFloat(elements.topTuckFlap.value) || 0);
+            let bottomTuck = Math.max(0.1, parseFloat(elements.bottomTuckFlap.value) || 0);
+            let dustFlaps = Math.max(0.1, parseFloat(elements.dustFlaps.value) || 0);
+            let bleed = Math.max(0, parseFloat(elements.bleed.value) || 0);
+            let safety = Math.max(0, parseFloat(elements.safety.value) || 0);
+            const originalL = l, originalW = w, originalH = h;
+            if (state.unit === 'mm') {
+                l /= INCH_TO_MM; w /= INCH_TO_MM; h /= INCH_TO_MM;
+                glueFlap /= INCH_TO_MM; topTuck /= INCH_TO_MM; bottomTuck /= INCH_TO_MM;
+                dustFlaps /= INCH_TO_MM; bleed /= INCH_TO_MM; safety /= INCH_TO_MM;
+            }
+            
+            let thicknessPt = parseFloat(elements.thickness.value) || 0;
+            if (elements.paperType.value === 'corrugated') {
+                const selectedFlute = elements.fluteType.options[elements.fluteType.selectedIndex];
+                thicknessPt = parseFloat(selectedFlute.dataset.thickness) || 0;
+            }
+            const t = thicknessPt / 1000;
+            const tearAway = elements.tearAway.checked;
+            return { l, w, h, t, glueFlap, topTuck, bottomTuck, dustFlaps, bleed, safety, tearAway, oL: originalL, oW: originalW, oH: originalH };
+        }
+        
+        function draw() {
+            dielinePaths = []; 
+            const params = getDimensions();
+            const { totalWidth, totalHeight } = getDielineDimensions(params, state.boxType);
+            const parent = elements.dielineCanvas.parentElement;
+            
+            elements.dielineCanvas.width = parent.clientWidth;
+            elements.dielineCanvas.height = parent.clientHeight;
+            ctx.clearRect(0, 0, parent.clientWidth, parent.clientHeight);
+            
+            const ppi = 72;
+            const scale = Math.min((parent.clientWidth * 0.8) / (totalWidth * ppi), (parent.clientHeight * 0.8) / (totalHeight * ppi));
+            
+            ctx.save();
+            ctx.translate(parent.clientWidth / 2, parent.clientHeight / 2);
+            ctx.scale(state.transform.scale * scale, state.transform.scale * scale);
+            ctx.translate(-totalWidth * ppi / 2 + state.pan.x / scale / state.transform.scale, -totalHeight * ppi / 2 + state.pan.y / scale / state.transform.scale);
+            
+            params.ppi = ppi;
+
+            if (state.customDieline) {
+                uploadedPaths.forEach(path => {
+                    const pixels = path.points.map(p => [p[0] * ppi, p[1] * ppi]);
+                    drawPath(path.color, pixels, path.isDashed);
+                });
+            } else {
+                const drawer = dielineDrawers[state.boxType];
+                if(drawer) drawer(params);
+            }
+
+            if (elements.bleed.value > 0) drawBleedAndSafetyLines(params, BLEED_COLOR, params.bleed);
+            if (elements.safety.value > 0) drawBleedAndSafetyLines(params, SAFETY_COLOR, -params.safety);
+
+            if (params.tearAway) {
+                state.tearAwayLines.forEach(line => {
+                    const linePixels = line.points.map(p => [p[0] * ppi, p[1] * ppi]);
+                    drawPath(PERFORATION_COLOR, linePixels, true);
+                });
+            }
+            
+            if (state.isEditingTearLine) {
+                state.tearAwayLines.forEach(line => {
+                    line.points.forEach(v => {
+                        ctx.fillStyle = 'rgba(255, 193, 7, 0.8)';
+                        ctx.beginPath();
+                        ctx.arc(v[0] * ppi, v[1] * ppi, 5 / (state.transform.scale * scale), 0, 2 * Math.PI);
+                        ctx.fill();
+                    });
+                });
+            }
+
+            ctx.restore();
+        }
+
+        // --- DIELINE LIBRARY ---
+        const dielineDrawers = {
+            rte: ({ l, w, h, t, glueFlap, topTuck, bottomTuck, dustFlaps, ppi, oL, oW, oH }) => {
+                const lp = l * ppi, wp = (w - t) * ppi, hp = h * ppi;
+                const glueFlapWidth = glueFlap * ppi;
+                const topTuckFlapHeight = topTuck * ppi;
+                const bottomTuckFlapHeight = bottomTuck * ppi;
+                const dustFlapHeight = dustFlaps * ppi;
+                let x = glueFlapWidth, y = topTuckFlapHeight;
+                drawPath(CUT_COLOR, [[x, y], [x - glueFlapWidth, y + 0.1*ppi], [x - glueFlapWidth, y + hp - 0.1*ppi], [x, y + hp]]);
+                drawPath(CREASE_COLOR, [[x, y], [x, y + hp]]);
+                const backX = x;
+                drawPanel(x, y, lp, hp);
+                drawTuckFlap(x, y + hp, lp, bottomTuckFlapHeight, false); 
+                drawDustFlaps(x + lp, y, wp, dustFlapHeight, hp, false);
+                x += lp;
+                const sideLeftX = x;
+                drawPanel(x, y, wp, hp);
+                x += wp;
+                const frontX = x;
+                drawPanel(x, y, lp, hp);
+                drawTuckFlap(x, y, lp, topTuckFlapHeight, true);
+                drawDustFlaps(x - wp, y, wp, dustFlapHeight, hp, true);
+                x += lp;
+                drawPanel(x, y, wp, hp);
+                drawDustFlaps(x, y, wp, dustFlapHeight, hp, true);
+                drawDustFlaps(x, y, wp, dustFlapHeight, hp, false);
+                drawDimension(backX, y + hp + bottomTuckFlapHeight + 20, backX + lp, y + hp + bottomTuckFlapHeight + 20, `${oL.toFixed(2)} ${state.unit}`, 'bottom');
+                drawDimension(sideLeftX, y - topTuckFlapHeight - 20, sideLeftX + wp, y - topTuckFlapHeight - 20, `${oW.toFixed(2)} ${state.unit}`, 'top');
+                drawDimension(frontX + lp + wp + 20, y, frontX + lp + wp + 20, y + hp, `${oH.toFixed(2)} ${state.unit}`, 'right');
+            },
+            ste: ({ l, w, h, t, glueFlap, topTuck, dustFlaps, ppi, oL, oW, oH }) => {
+                const lp = l * ppi, wp = (w - t) * ppi, hp = h * ppi;
+                const glueFlapWidth = glueFlap * ppi;
+                const tuckFlapHeight = topTuck * ppi;
+                const dustFlapHeight = dustFlaps * ppi;
+                let x = glueFlapWidth, y = tuckFlapHeight;
+                drawPath(CUT_COLOR, [[x, y], [x - glueFlapWidth, y + 0.1*ppi], [x - glueFlapWidth, y + hp - 0.1*ppi], [x, y + hp]]);
+                drawPath(CREASE_COLOR, [[x, y], [x, y + hp]]);
+                const backX = x;
+                drawPanel(x, y, lp, hp);
+                drawTuckFlap(x, y, lp, tuckFlapHeight, true);
+                drawDustFlaps(x, y, wp, dustFlapHeight, hp, true);
+                x += lp;
+                const sideLeftX = x;
+                drawPanel(x, y, wp, hp);
+                x += wp;
+                const frontX = x;
+                drawPanel(x, y, lp, hp);
+                drawTuckFlap(x, y + hp, lp, tuckFlapHeight, false);
+                drawDustFlaps(x, y + hp, wp, dustFlapHeight, hp, false);
+                x += lp;
+                drawPanel(x, y, wp, hp);
+                drawDimension(backX, y - tuckFlapHeight - 20, backX + lp, y - tuckFlapHeight - 20, `${oL.toFixed(2)} ${state.unit}`, 'top');
+                drawDimension(sideLeftX, y + hp + tuckFlapHeight + 20, sideLeftX + wp, y + hp + tuckFlapHeight + 20, `${oW.toFixed(2)} ${state.unit}`, 'bottom');
+                drawDimension(frontX + lp + wp + 20, y, frontX + lp + wp + 20, y + hp, `${oH.toFixed(2)} ${state.unit}`, 'right');
+            },
+            slb: ({ l, w, h, t, glueFlap, topTuck, dustFlaps, ppi, oL, oW, oH }) => {
+                const lp = l * ppi, wp = (w - t) * ppi, hp = h * ppi;
+                const glueFlapWidth = glueFlap * ppi;
+                const topTuckFlapHeight = topTuck * ppi;
+                let x = glueFlapWidth, y = topTuckFlapHeight;
+                drawPath(CUT_COLOR, [[x, y], [x - glueFlapWidth, y + 0.1*ppi], [x - glueFlapWidth, y + hp - 0.1*ppi], [x, y + hp]]);
+                drawPath(CREASE_COLOR, [[x, y], [x, y + hp]]);
+                drawPanel(x, y, lp, hp);
+                drawTuckFlap(x, y, lp, topTuckFlapHeight, true);
+                x += lp;
+                drawPanel(x, y, wp, hp);
+                drawSnapLockBottom(x, y + hp, wp, hp, ppi);
+                x += wp;
+                drawPanel(x, y, lp, hp);
+                x += lp;
+                drawPanel(x, y, wp, hp);
+                drawSnapLockBottom(x, y + hp, wp, hp, ppi);
+                drawDimension(x-wp, y, x, y, `${oW.toFixed(2)} ${state.unit}`, 'top');
+            },
+            ttab: ({ l, w, h, t, glueFlap, topTuck, dustFlaps, ppi, oL, oW, oH }) => {
+                const lp = l * ppi, wp = (w - t) * ppi, hp = h * ppi;
+                const glueFlapWidth = glueFlap * ppi;
+                const topTuckFlapHeight = topTuck * ppi;
+                let x = glueFlapWidth, y = topTuckFlapHeight;
+                drawPath(CUT_COLOR, [[x, y], [x - glueFlapWidth, y + 0.1*ppi], [x - glueFlapWidth, y + hp - 0.1*ppi], [x, y + hp]]);
+                drawPath(CREASE_COLOR, [[x, y], [x, y + hp]]);
+                drawPanel(x, y, lp, hp);
+                drawTuckFlap(x, y, lp, topTuckFlapHeight, true);
+                x += lp;
+                drawPanel(x, y, wp, hp);
+                drawAutoBottom(x, y + hp, wp, ppi);
+                x += wp;
+                drawPanel(x, y, lp, hp);
+                x += lp;
+                drawPanel(x, y, wp, hp);
+                drawAutoBottom(x, y + hp, wp, ppi);
+                drawDimension(x-wp, y, x, y, `${oW.toFixed(2)} ${state.unit}`, 'top');
+            },
+            mailer: ({ l, w, h, glueFlap, ppi, oL, oW, oH }) => {
+                const lp = l * ppi, wp = w * ppi, hp = h * ppi;
+                const glueFlapWidth = glueFlap * ppi;
+                const tuckFlapHeight = w * ppi;
+                let x = 0, y = hp + w * ppi;
+                drawPath(CREASE_COLOR, [[x, y], [x + glueFlapWidth, y]]);
+                drawPath(CUT_COLOR, [[x, y], [x, y + hp + tuckFlapHeight], [x + glueFlapWidth, y + hp + tuckFlapHeight], [x + glueFlapWidth, y]]);
+                x += glueFlapWidth;
+                drawPanel(x, y, lp, hp);
+                drawMailerDustFlaps(x, y, lp, wp, hp);
+                x += lp;
+                drawPanel(x, y, wp, hp);
+                x += wp;
+                drawPanel(x, y, lp, hp);
+                drawMailerDustFlaps(x, y, lp, wp, hp);
+                drawMailerTuckFlap(x, y - tuckFlapHeight, lp, wp);
+                x += lp;
+                drawPanel(x, y, wp, hp);
+                drawDimension(glueFlapWidth, y + hp + 20, glueFlapWidth + lp, y + hp + 20, `${oL.toFixed(2)} ${state.unit}`, 'bottom');
+                drawDimension(glueFlapWidth + lp, y + hp - 20, glueFlapWidth + lp + wp, y + hp - 20, `${oW.toFixed(2)} ${state.unit}`, 'top');
+                drawDimension(glueFlapWidth + lp + wp + lp + wp + 20, y, glueFlapWidth + lp + wp + lp + wp + 20, y + hp, `${oH.toFixed(2)} ${state.unit}`, 'right');
+            },
+            sleeve: ({ l, w, h, glueFlap, ppi, oL, oW, oH }) => {
+                const lp = l * ppi, wp = w * ppi, hp = h * ppi;
+                const glueFlapWidth = glueFlap * ppi;
+                let x = 0, y = 0;
+                drawPanel(x, y, lp, hp);
+                drawPanel(x + lp, y, wp, hp);
+                drawPanel(x + lp + wp, y, lp, hp);
+                drawPanel(x + lp + wp + lp, y, wp, hp);
+                drawPath(CREASE_COLOR, [[x + lp + wp + lp + wp, y], [x + lp + wp + lp + wp, y + hp]]);
+                drawPath(CUT_COLOR, [[x + lp + wp + lp + wp, y], [x + lp + wp + lp + wp + glueFlapWidth, y], [x + lp + wp + lp + wp + glueFlapWidth, y + hp], [x + lp + wp + lp + wp, y + hp]]);
+                drawDimension(x, y + hp + 20, x + lp, y + hp + 20, `${oL.toFixed(2)} ${state.unit}`, 'bottom');
+                drawDimension(x + lp, y - 20, x + lp + wp, y - 20, `${oW.toFixed(2)} ${state.unit}`, 'top');
+                drawDimension(x + lp + wp + lp + wp + glueFlapWidth + 20, y, x + lp + wp + lp + glueFlapWidth + 20, y + hp, `${oH.toFixed(2)} ${state.unit}`, 'right');
+            },
+            hanger: ({ l, w, h, ppi, oL, oW, oH }) => {
+                const lp = l * ppi, wp = w * ppi, hp = h * ppi;
+                let x = 0, y = hp;
+                drawPanel(x, y, lp, hp);
+                drawPanel(x + lp, y, wp, hp);
+                drawPanel(x + lp + wp, y, lp, hp);
+                drawPanel(x + lp + wp + lp, y, wp, hp);
+                drawPath(CREASE_COLOR, [[x + lp + wp + lp + wp, y], [x + lp + wp + lp + wp, y + hp]]);
+                drawPath(CUT_COLOR, [[x + lp + wp + lp + wp, y], [x + lp + wp + lp + wp + 0.5*ppi, y], [x + lp + wp + lp + wp + 0.5*ppi, y + hp], [x + lp + wp + lp + wp, y + hp]]);
+                const hangTabWidth = l * 0.4 * ppi;
+                const hangTabHeight = l * 0.3 * ppi;
+                const hangTabX = x + lp + wp + lp + wp/2 - hangTabWidth/2;
+                const hangTabY = y - hangTabHeight;
+                drawPath(CUT_COLOR, [[hangTabX, hangTabY], [hangTabX + hangTabWidth, hangTabY], [hangTabX + hangTabWidth, hangTabY - hangTabHeight], [hangTabX, hangTabY - hangTabHeight]]);
+                drawPath(CREASE_COLOR, [[hangTabX, hangTabY], [hangTabX + hangTabWidth, hangTabY]]);
+                drawDimension(x, y + hp + 20, x + lp, y + hp + 20, `${oL.toFixed(2)} ${state.unit}`, 'bottom');
+                drawDimension(x + lp, y - 20, x + lp + wp, y - 20, `${oW.toFixed(2)} ${state.unit}`, 'top');
+                drawDimension(x + lp + wp + lp + wp + 20, y, x + lp + wp + lp + wp + 20, y + hp, `${oH.toFixed(2)} ${state.unit}`, 'right');
+            },
+            gable: ({ l, w, h, topTuck, ppi, oL, oW, oH }) => {
+                const lp = l * ppi, wp = w * ppi, hp = h * ppi;
+                const topFlapHeight = h * 0.5 * ppi;
+                const handleHeight = h * 0.2 * ppi;
+                const tuckFlapHeight = topTuck * ppi;
+                let x = wp, y = hp + topFlapHeight;
+                drawPanel(x, y, lp, hp);
+                drawGableFlaps(x, y, lp, hp, topFlapHeight, handleHeight, true);
+                drawPanel(x + lp, y, wp, hp);
+                drawGableFlaps(x + lp, y, wp, hp, topFlapHeight, handleHeight, false);
+                drawPanel(x + lp + wp, y, lp, hp);
+                drawGableFlaps(x + lp + wp, y, lp, hp, topFlapHeight, handleHeight, true);
+                drawPanel(x + lp + wp + lp, y, wp, hp);
+                drawGableFlaps(x + lp + wp + lp, y, wp, hp, topFlapHeight, handleHeight, false);
+                drawDimension(x, y + hp + 20, x + lp, y + hp + 20, `${oL.toFixed(2)} ${state.unit}`, 'bottom');
+                drawDimension(x + lp, y - hp - 20, x + lp + wp, y - hp - 20, `${oW.toFixed(2)} ${state.unit}`, 'top');
+                drawDimension(x + lp + wp + lp + wp + 20, y, x + lp + wp + lp + wp + 20, y + hp, `${oH.toFixed(2)} ${state.unit}`, 'right');
+            },
+        };
+
+        // --- HELPERS ---
+        function drawCreaseLine(x1, y1, x2, y2) { drawPath(CREASE_COLOR, [[x1, y1], [x2, y2]]); }
+        function drawPanel(x, y, w, h) { drawPath(CREASE_COLOR, [[x, y], [x, y + h], [x + w, y + h], [x + w, y], [x, y]]); }
+        function drawTuckFlap(x, y, width, height, isTop) {
+            const dir = isTop ? -1 : 1;
+            const sideTaper = width * 0.05;
+            const lockRadius = height * 0.1;
+            const p1 = [x, y];
+            const p2 = [x + sideTaper, y + dir * height];
+            const p3 = [x + width - sideTaper, y + dir * height];
+            const p4 = [x + width, y];
+            drawPath(CUT_COLOR, [p1, p2, p3, p4]);
+            const lockY = y + dir * (height * 0.5);
+            const lockP1 = [x + width * 0.4, lockY];
+            const lockP2 = [x + width * 0.4, lockY - dir * lockRadius*2];
+            const lockP3 = [x + width * 0.6, lockY - dir * lockRadius*2];
+            const lockP4 = [x + width * 0.6, lockY];
+            drawPath(CUT_COLOR, [lockP1, lockP2, lockP3, lockP4]);
+        }
+        function drawDustFlaps(x, y, panelWidth, flapHeight, panelHeight, isTop) {
+            const dir = isTop ? -1 : 1;
+            const startY = isTop ? y : y + panelHeight;
+            const taper = panelWidth * 0.1;
+            const points = [[x, startY], [x, startY + dir * flapHeight], [x + panelWidth - taper, startY + dir * flapHeight], [x + panelWidth, startY]];
+            drawPath(CUT_COLOR, points);
+        }
+        function drawSnapLockBottom(x, y, panelWidth, panelHeight, ppi) {
+            const notchWidth = panelWidth * 0.2;
+            const notchHeight = panelHeight * 0.2;
+            const innerPanelHeight = panelHeight * 0.5;
+            drawPath(CUT_COLOR, [[x, y], [x - notchWidth, y + notchHeight], [x - notchWidth, y + innerPanelHeight], [x, y + innerPanelHeight]]);
+            drawPath(CUT_COLOR, [[x + panelWidth, y], [x + panelWidth + notchWidth, y + notchHeight], [x + panelWidth + notchWidth, y + innerPanelHeight], [x + panelWidth, y + innerPanelHeight]]);
+            drawPath(CREASE_COLOR, [[x, y], [x, y + innerPanelHeight]]);
+            drawPath(CREASE_COLOR, [[x + panelWidth, y], [x + panelWidth, y + innerPanelHeight]]);
+            drawPath(CUT_COLOR, [[x, y + innerPanelHeight], [x + panelWidth, y + innerPanelHeight], [x + panelWidth, y + innerPanelHeight + notchHeight], [x + panelWidth - notchWidth, y + innerPanelHeight + notchHeight], [x + panelWidth - notchWidth, y + panelHeight], [x + notchWidth, y + panelHeight], [x + notchWidth, y + innerPanelHeight + notchHeight], [x, y + innerPanelHeight]]);
+            drawPath(CREASE_COLOR, [[x, y + innerPanelHeight], [x + panelWidth, y + innerPanelHeight]]);
+        }
+        function drawAutoBottom(x, y, wp, ppi) {
+            const l = (x, y) => [x + wp/2, y];
+            const r = (x, y) => [x - wp/2, y];
+            const t = (x, y) => [x, y-wp/2];
+            drawPath(CUT_COLOR, [r(x,y), [x-wp/4, y+wp/2], [x+wp/4, y+wp/2], l(x,y)]);
+            drawPath(CREASE_COLOR, [r(x,y), l(x,y)]);
+            drawPath(CUT_COLOR, [r(x,y), r(t(x,y),0), [x-wp, y], [x-wp/4, y+wp/2], r(x,y)]);
+            drawPath(CUT_COLOR, [l(x,y), l(t(x,y),0), [x+wp, y], [x+wp/4, y+wp/2], l(x,y)]);
+        }
+        function drawMailerDustFlaps(x, y, lp, wp, hp) {
+            const flapHeight = wp/2;
+            drawPath(CUT_COLOR, [[x, y - hp], [x, y - hp - flapHeight], [x+lp, y-hp-flapHeight], [x+lp, y-hp]]);
+            drawPath(CUT_COLOR, [[x, y+hp], [x, y+hp+flapHeight], [x+lp, y+hp+flapHeight], [x+lp, y+hp]]);
+            drawPath(CREASE_COLOR, [[x, y-hp], [x+lp, y-hp]]);
+            drawPath(CREASE_COLOR, [[x, y+hp], [x+lp, y+hp]]);
+        }
+        function drawMailerTuckFlap(x, y, lp, wp) {
+            const tuckHeight = wp/2;
+            drawPath(CUT_COLOR, [[x, y], [x+lp, y], [x+lp, y+tuckHeight], [x, y+tuckHeight]]);
+            drawPath(CREASE_COLOR, [[x, y], [x+lp, y]]);
+        }
+        function drawGableFlaps(x, y, panelWidth, panelHeight, topFlapHeight, handleHeight, isTop) {
+            const p1 = [x, y];
+            const p2 = [x, y - topFlapHeight];
+            const p3 = [x + panelWidth / 2, y - topFlapHeight - handleHeight];
+            const p4 = [x + panelWidth, y - topFlapHeight];
+            const p5 = [x + panelWidth, y];
+            drawPath(CUT_COLOR, [p1, p2, p3, p4, p5]);
+            drawPath(CREASE_COLOR, [p1, p5]);
+            if (isTop) {
+                drawCreaseLine(p2[0], p2[1], p4[0], p4[1]);
+                ctx.beginPath();
+                ctx.arc(p3[0], p3[1] + handleHeight * 0.7, handleHeight * 0.3, 0, 2 * Math.PI);
+                ctx.stroke();
+            }
+        }
+        function drawBleedAndSafetyLines(params, color, offset) {
+            const ppi = params.ppi;
+            const offsetPpi = offset * ppi;
+            dielinePaths.filter(p => p.color === CUT_COLOR).forEach(path => {
+                if (path.points.length < 2) return;
+                const newPoints = [];
+                for(let i = 0; i < path.points.length - 1; i++) {
+                    const p1 = path.points[i];
+                    const p2 = path.points[i+1];
+                    const angle = Math.atan2(p2[1] - p1[1], p2[0] - p1[0]) + Math.PI / 2;
+                    const dx = Math.cos(angle) * offsetPpi;
+                    const dy = Math.sin(angle) * offsetPpi;
+                    newPoints.push([p1[0] + dx, p1[1] + dy]);
+                }
+                if (path.points[0][0] === path.points[path.points.length - 1][0] && path.points[0][1] === path.points[path.points.length - 1][1]) {
+                    const p1 = path.points[path.points.length-2];
+                    const p2 = path.points[path.points.length-1];
+                    const angle = Math.atan2(p2[1] - p1[1], p2[0] - p1[0]) + Math.PI / 2;
+                    const dx = Math.cos(angle) * offsetPpi;
+                    const dy = Math.sin(angle) * offsetPpi;
+                    newPoints.push([p2[0] + dx, p2[1] + dy]);
+                    newPoints.push(newPoints[0]);
+                }
+                drawPath(color, newPoints);
+            });
+        }
+        function drawPath(color, points, isDashed = false) {
+            const ppi = state.ppi;
+            const pointsInches = points.map(p => [p[0] / ppi, p[1] / ppi]);
+            dielinePaths.push({ color, points: pointsInches, isDashed });
+            ctx.strokeStyle = color;
+            ctx.lineWidth = 1 / state.transform.scale;
+            if (isDashed) {
+                ctx.setLineDash([5 / state.transform.scale, 5 / state.transform.scale]);
+            } else {
+                ctx.setLineDash([]);
+            }
+            ctx.beginPath();
+            ctx.moveTo(points[0][0], points[0][1]);
+            for (let i = 1; i < points.length; i++) ctx.lineTo(points[i][0], points[i][1]);
+            if (points.length > 2 && Math.hypot(points[0][0] - points[points.length-1][0], points[0][1] - points[points.length-1][1]) < 1) ctx.closePath();
+            ctx.stroke();
+        }
+        function drawDimension(x1, y1, x2, y2, text, position) {
+            const ppi = state.ppi;
+            const offset = 40;
+            ctx.strokeStyle = DIM_COLOR;
+            ctx.fillStyle = DIM_COLOR;
+            ctx.lineWidth = 0.5 / state.transform.scale;
+            ctx.font = `${10 / state.transform.scale}px Inter`;
+            ctx.textAlign = "center";
+            ctx.textBaseline = "middle";
+            if (position === 'bottom') {
+                drawPath(DIM_COLOR, [[x1, y1], [x1, y1 + offset], [x2, y1 + offset], [x2, y1]]);
+                ctx.fillText(text, (x1 + x2) / 2, y1 + offset + (10 / state.transform.scale));
+            } else if (position === 'top') {
+                drawPath(DIM_COLOR, [[x1, y1], [x1, y1 - offset], [x2, y1 - offset], [x2, y1]]);
+                ctx.fillText(text, (x1 + x2) / 2, y1 - offset - (10 / state.transform.scale));
+            } else if (position === 'right') {
+                drawPath(DIM_COLOR, [[x1, y1], [x1 + offset, y1], [x1 + offset, y2], [x1, y2]]);
+                ctx.save();
+                ctx.translate(x1 + offset + (10 / state.transform.scale), (y1 + y2) / 2);
+                ctx.rotate(-Math.PI / 2);
+                ctx.fillText(text, 0, 0);
+                ctx.restore();
+            }
+        }
+        function getDielineDimensions({l, w, h, topTuck, bottomTuck, glueFlap}, boxType) {
+            let totalWidth, totalHeight;
+            const padding = 2;
+            switch (boxType) {
+                case 'rte':
+                case 'ste':
+                    totalWidth = 2 * l + 2 * w + glueFlap + padding;
+                    totalHeight = h + topTuck + bottomTuck + padding;
+                    break;
+                case 'slb':
+                case 'ttab':
+                    totalWidth = 2 * l + 2 * w + glueFlap + padding;
+                    totalHeight = h + h + topTuck + padding;
+                    break;
+                case 'mailer':
+                    totalWidth = 2 * l + 2 * w + glueFlap + padding;
+                    totalHeight = h + 2 * w + padding;
+                    break;
+                case 'sleeve':
+                    totalWidth = l * 2 + w * 2 + glueFlap + padding;
+                    totalHeight = h + padding;
+                    break;
+                case 'hanger':
+                    totalWidth = l * 2 + w * 2 + l * 0.4 + padding;
+                    totalHeight = h + l * 0.3 + padding;
+                    break;
+                case 'gable':
+                    totalWidth = l * 2 + w * 2 + padding;
+                    totalHeight = h + h * 0.5 + h * 0.2 + padding;
+                    break;
+                default:
+                    totalWidth = 2 * l + 2 * w + glueFlap + padding;
+                    totalHeight = h + topTuck + bottomTuck + padding;
+                    break;
+            }
+            return { totalWidth, totalHeight };
+        }
+        function exportVector(format) {
+            const params = getDimensions();
+            const { totalWidth, totalHeight } = getDielineDimensions(params, state.boxType);
+            const originalPPI = 72;
+            const exportWidth = totalWidth * originalPPI;
+            const exportHeight = totalHeight * originalPPI;
+            if (format === 'svg') {
+                let svgString = `<svg xmlns="http://www.w3.org/2000/svg" width="${exportWidth}" height="${exportHeight}" viewBox="0 0 ${exportWidth} ${exportHeight}">\n`;
+                dielinePaths.forEach(path => {
+                    const pointsStr = path.points.map(p => `${p[0] * originalPPI},${p[1] * originalPPI}`).join(' ');
+                    let dashArray = '';
+                    if (path.isDashed) {
+                        dashArray = '5,5';
+                    }
+                    if (path.color === CREASE_COLOR) {
+                        dashArray = '10,3,3,3';
+                    }
+                    svgString += `    <polyline points="${pointsStr}" fill="none" stroke="${path.color}" stroke-width="1pt" stroke-dasharray="${dashArray}"/>\n`;
+                });
+                svgString += '</svg>';
+                downloadFile(svgString, 'dieline.svg', 'image/svg+xml');
+            } else if (format === 'pdf') {
+                const { jsPDF } = window.jspdf;
+                const doc = new jsPDF({ unit: 'pt', format: [exportWidth, exportHeight] });
+                dielinePaths.forEach(path => {
+                    doc.setDrawColor(path.color.substring(1));
+                    doc.setLineWidth(1);
+                    if (path.isDashed) {
+                        if (path.color === CREASE_COLOR) {
+                            doc.setLineDashPattern([10, 3, 3, 3], 0);
+                        } else {
+                            doc.setLineDashPattern([5, 5], 0);
+                        }
+                    } else {
+                        doc.setLineDashPattern([], 0);
+                    }
+                    for (let i = 0; i < path.points.length - 1; i++) {
+                        const p1 = path.points[i];
+                        const p2 = path.points[i+1];
+                        doc.line(p1[0] * originalPPI, p1[1] * originalPPI, p2[0] * originalPPI, p2[1] * originalPPI);
+                    }
+                });
+                doc.save('dieline.pdf');
+            }
+        }
+        function downloadFile(data, filename, type) {
+            const blob = new Blob([data], {type});
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = filename;
+            a.click();
+            URL.revokeObjectURL(url);
+        }
+        function parseSVG(svgContent) {
+            uploadedPaths = [];
+            const parser = new DOMParser();
+            const doc = parser.parseFromString(svgContent, "image/svg+xml");
+            const svgPaths = doc.querySelectorAll('path, line, polyline');
+            const svgEl = doc.querySelector('svg');
+            const viewBox = svgEl.getAttribute('viewBox') || `0 0 ${svgEl.getAttribute('width')} ${svgEl.getAttribute('height')}`;
+            const [minX, minY, width, height] = viewBox.split(' ').map(Number);
+            const ppi = state.ppi;
+            const scaleFactor = ppi / (width / (4 * INCH_TO_MM));
+            svgPaths.forEach(el => {
+                const points = [];
+                const color = el.getAttribute('stroke') || '#000000';
+                const dashArray = el.getAttribute('stroke-dasharray');
+                const isDashed = !!dashArray;
+                if (el.tagName === 'polyline') {
+                    const polyPoints = el.points;
+                    for (let i = 0; i < polyPoints.length; i++) {
+                        points.push([polyPoints[i].x * scaleFactor, polyPoints[i].y * scaleFactor]);
+                    }
+                } else if (el.tagName === 'line') {
+                    points.push([parseFloat(el.getAttribute('x1')) * scaleFactor, parseFloat(el.getAttribute('y1')) * scaleFactor]);
+                    points.push([parseFloat(el.getAttribute('x2')) * scaleFactor, parseFloat(el.getAttribute('y2')) * scaleFactor]);
+                }
+                if (points.length > 0) {
+                    uploadedPaths.push({ color, points, isDashed });
+                }
+            });
+            state.customDieline = true;
+            elements.selectedTemplateName.textContent = "Custom Dieline";
+            draw();
+        }
+        function setupEventListeners() {
+            Object.keys(elements).forEach(key => {
+                const el = elements[key];
+                if (el && (el.tagName === 'INPUT' || el.tagName === 'SELECT')) {
+                    el.addEventListener('input', () => {
+                        state.customDieline = false;
+                        if (key !== 'tearAway') state.tearAwayLines = [];
+                        draw();
+                    });
+                }
+            });
+            elements.unitInBtn.addEventListener('click', () => switchUnit('in'));
+            elements.unitMmBtn.addEventListener('click', () => switchUnit('mm'));
+            elements.changeTemplateBtn.addEventListener('click', () => elements.modal.classList.add('is-open'));
+            elements.closeModalBtn.addEventListener('click', () => elements.modal.classList.remove('is-open'));
+            elements.exportSVG.addEventListener('click', () => exportVector('svg'));
+            elements.exportPDF.addEventListener('click', () => exportVector('pdf'));
+            elements.paperType.addEventListener('change', handlePaperChange);
+            elements.fluteType.addEventListener('change', handlePaperChange);
+            elements.tearAway.addEventListener('change', handleTearAwayChange);
+            elements.addTearLineBtn.addEventListener('click', addTearLine);
+            elements.editTearLineBtn.addEventListener('click', toggleTearLineEdit);
+            elements.dielineCanvas.addEventListener('mousedown', handleCanvasMouseDown);
+            elements.dielineCanvas.addEventListener('mousemove', handleCanvasMouseMove);
+            elements.dielineCanvas.addEventListener('mouseup', handleCanvasMouseUp);
+            elements.dielineCanvas.addEventListener('wheel', handleCanvasWheel);
+            elements.zoomInBtn.addEventListener('click', () => zoom(1.2));
+            elements.zoomOutBtn.addEventListener('click', () => zoom(0.8));
+            elements.zoomResetBtn.addEventListener('click', zoomReset);
+            elements.fileInput.addEventListener('change', (e) => {
+                const file = e.target.files[0];
+                if (file) {
+                    const reader = new FileReader();
+                    reader.onload = (event) => parseSVG(event.target.result);
+                    reader.readAsText(file);
+                }
+            });
+            window.addEventListener('resize', draw);
+        }
+        function handlePaperChange() {
+            const selected = elements.paperType.options[elements.paperType.selectedIndex];
+            if (elements.paperType.value === 'corrugated') {
+                elements.fluteTypeContainer.classList.remove('hidden');
+                const selectedFlute = elements.fluteType.options[elements.fluteType.selectedIndex];
+                elements.thickness.value = selectedFlute.dataset.thickness;
+                elements.thickness.disabled = true;
+            } else {
+                elements.fluteTypeContainer.classList.add('hidden');
+                elements.thickness.value = selected.dataset.thickness;
+                elements.thickness.disabled = false;
+            }
+            draw();
+        }
+        function handleTearAwayChange() {
+            elements.tearAwayEditContainer.classList.toggle('hidden', !elements.tearAway.checked);
+            state.tearAwayLines = [];
+            if (state.isEditingTearLine) {
+                toggleTearLineEdit();
+            }
+            draw();
+        }
+        function addTearLine() {
+            if (state.tearAwayLines.length >= 4) return;
+            const params = getDimensions();
+            const { l, w, h } = params;
+            const newPoint = [w + l + 0.5, h/2];
+            const newLine = [newPoint, [newPoint[0] + 1, newPoint[1]]];
+            state.tearAwayLines.push({ points: newLine, color: PERFORATION_COLOR, isDashed: true });
+            draw();
+        }
+        function toggleTearLineEdit() {
+            state.isEditingTearLine = !state.isEditingTearLine;
+            elements.editTearLineBtn.textContent = state.isEditingTearLine ? 'Finish Editing' : 'Edit Tear Lines';
+            elements.dielineCanvas.classList.toggle('editing', state.isEditingTearLine);
+            draw();
+        }
+        function handleCanvasMouseDown(e) {
+            const rect = elements.dielineCanvas.getBoundingClientRect();
+            const mouseX = e.clientX - rect.left;
+            const mouseY = e.clientY - rect.top;
+            if (state.isEditingTearLine) {
+                for (let i = 0; i < state.tearAwayLines.length; i++) {
+                    for (let j = 0; j < state.tearAwayLines[i].points.length; j++) {
+                        const v = state.tearAwayLines[i].points[j];
+                        const pointX = (v[0] * state.ppi * state.transform.scale) + state.pan.x + (rect.width/2) - (getDielineDimensions(getDimensions(), state.boxType).totalWidth * state.ppi * state.transform.scale)/2;
+                        const pointY = (v[1] * state.ppi * state.transform.scale) + state.pan.y + (rect.height/2) - (getDielineDimensions(getDimensions(), state.boxType).totalHeight * state.ppi * state.transform.scale)/2;
+                        if (Math.hypot(pointX - mouseX, pointY - mouseY) < 10) {
+                            state.draggingVertex = { lineIndex: i, vertexIndex: j };
+                            return;
+                        }
+                    }
+                }
+            } else {
+                state.pan.active = true;
+                state.pan.startX = e.clientX;
+                state.pan.startY = e.clientY;
+            }
+        }
+        function handleCanvasMouseMove(e) {
+            const rect = elements.dielineCanvas.getBoundingClientRect();
+            if (state.draggingVertex) {
+                const mouseX = e.clientX - rect.left;
+                const mouseY = e.clientY - rect.top;
+                const newX = (mouseX - state.pan.x - (rect.width/2) + (getDielineDimensions(getDimensions(), state.boxType).totalWidth * state.ppi * state.transform.scale)/2) / (state.ppi * state.transform.scale);
+                const newY = (mouseY - state.pan.y - (rect.height/2) + (getDielineDimensions(getDimensions(), state.boxType).totalHeight * state.ppi * state.transform.scale)/2) / (state.ppi * state.transform.scale);
+                state.tearAwayLines[state.draggingVertex.lineIndex].points[state.draggingVertex.vertexIndex] = [newX, newY];
+                draw();
+            } else if (state.pan.active) {
+                const dx = e.clientX - state.pan.startX;
+                const dy = e.clientY - state.pan.startY;
+                state.pan.x += dx;
+                state.pan.y += dy;
+                state.pan.startX = e.clientX;
+                state.pan.startY = e.clientY;
+                draw();
+            }
+        }
+        function handleCanvasMouseUp() {
+            state.draggingVertex = null;
+            state.pan.active = false;
+        }
+        function handleCanvasWheel(e) {
+            e.preventDefault();
+            const delta = e.deltaY > 0 ? 0.9 : 1.1;
+            zoom(delta);
+        }
+        function zoom(factor) {
+            state.transform.scale *= factor;
+            draw();
+        }
+        function zoomReset() {
+            state.transform.scale = 1;
+            state.pan.x = 0;
+            state.pan.y = 0;
+            draw();
+        }
+        function switchUnit(unit) {
+            if (state.unit === unit) return;
+            const inputs = ['length', 'width', 'height', 'glueFlap', 'topTuckFlap', 'bottomTuckFlap', 'dustFlaps', 'bleed', 'safety'];
+            const conversionFactor = unit === 'mm' ? INCH_TO_MM : 1 / INCH_TO_MM;
+            inputs.forEach(id => {
+                const el = elements[id];
+                let val = parseFloat(el.value);
+                el.value = (val * conversionFactor).toFixed(unit === 'mm' ? 1 : 2);
+            });
+            state.unit = unit;
+            elements.unitLabel.textContent = unit === 'mm' ? 'mm' : 'inches';
+            elements.unitMmBtn.classList.toggle('bg-indigo-500', unit === 'mm');
+            elements.unitMmBtn.classList.toggle('text-white', unit === 'mm');
+            elements.unitMmBtn.classList.toggle('bg-white', unit !== 'mm');
+            elements.unitInBtn.classList.toggle('bg-indigo-500', unit === 'in');
+            elements.unitInBtn.classList.toggle('text-white', unit === 'in');
+            elements.unitInBtn.classList.toggle('bg-white', unit !== 'in');
+            draw();
+        }
+        function populateTemplateGrid() {
+            templates.forEach(template => {
+                const card = document.createElement('div');
+                card.className = 'template-card border rounded-lg p-2 text-center cursor-pointer';
+                card.dataset.id = template.id;
+                card.innerHTML = `
+                    <img src="${template.img}" alt="${template.name}" class="w-full h-auto object-cover rounded-md mb-2 bg-slate-100" onerror="this.style.display='none'">
+                    <p class="text-sm font-medium text-slate-700">${template.name}</p>
+                `;
+                card.addEventListener('click', () => selectTemplate(template.id));
+                elements.templateGrid.appendChild(card);
+            });
+        }
+        function selectTemplate(id) {
+            state.boxType = id;
+            state.customDieline = false;
+            const template = templates.find(t => t.id === id);
+            elements.selectedTemplateName.textContent = template.name;
+            document.querySelectorAll('.template-card').forEach(c => c.classList.remove('selected'));
+            const selectedCard = document.querySelector(`.template-card[data-id="${id}"]`);
+            if (selectedCard) {
+                selectedCard.classList.add('selected');
+            }
+            elements.modal.classList.remove('is-open');
+            draw();
+        }
+        window.onload = () => {
+            populateTemplateGrid();
+            selectTemplate('rte');
+            setupEventListeners();
+            handlePaperChange();
+            draw();
+        };
+    </script>
+</body>
+</html>
