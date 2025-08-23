@@ -364,6 +364,16 @@
             const ppi = 72;
             const scale = Math.min((parent.clientWidth * 0.8) / (totalWidth * ppi), (parent.clientHeight * 0.8) / (totalHeight * ppi));
             
+            // Track view metrics for correct hit-testing and drag mapping
+            state.view = {
+                ppi,
+                fitScale: scale,
+                totalWidth,
+                totalHeight,
+                canvasWidth: parent.clientWidth,
+                canvasHeight: parent.clientHeight,
+            };
+            
             ctx.save();
             ctx.translate(parent.clientWidth / 2, parent.clientHeight / 2);
             ctx.scale(state.transform.scale * scale, state.transform.scale * scale);
@@ -650,38 +660,50 @@
         }
         function drawBleedAndSafetyLines(params, color, offset) {
             const ppi = params.ppi;
-            const offsetPpi = offset * ppi;
+            const offsetInches = offset;
             dielinePaths.filter(p => p.color === CUT_COLOR).forEach(path => {
                 if (path.points.length < 2) return;
-                const newPoints = [];
+                const newPointsInches = [];
                 for(let i = 0; i < path.points.length - 1; i++) {
                     const p1 = path.points[i];
                     const p2 = path.points[i+1];
                     const angle = Math.atan2(p2[1] - p1[1], p2[0] - p1[0]) + Math.PI / 2;
-                    const dx = Math.cos(angle) * offsetPpi;
-                    const dy = Math.sin(angle) * offsetPpi;
-                    newPoints.push([p1[0] + dx, p1[1] + dy]);
+                    const dx = Math.cos(angle) * offsetInches;
+                    const dy = Math.sin(angle) * offsetInches;
+                    newPointsInches.push([p1[0] + dx, p1[1] + dy]);
                 }
                 if (path.points[0][0] === path.points[path.points.length - 1][0] && path.points[0][1] === path.points[path.points.length - 1][1]) {
                     const p1 = path.points[path.points.length-2];
                     const p2 = path.points[path.points.length-1];
                     const angle = Math.atan2(p2[1] - p1[1], p2[0] - p1[0]) + Math.PI / 2;
-                    const dx = Math.cos(angle) * offsetPpi;
-                    const dy = Math.sin(angle) * offsetPpi;
-                    newPoints.push([p2[0] + dx, p2[1] + dy]);
-                    newPoints.push(newPoints[0]);
+                    const dx = Math.cos(angle) * offsetInches;
+                    const dy = Math.sin(angle) * offsetInches;
+                    newPointsInches.push([p2[0] + dx, p2[1] + dy]);
+                    newPointsInches.push(newPointsInches[0]);
                 }
-                drawPath(color, newPoints);
+                const newPointsPx = newPointsInches.map(p => [p[0] * ppi, p[1] * ppi]);
+                drawPath(color, newPointsPx);
             });
+        }
+        
+        // Helper to convert hex color to RGB tuple for jsPDF
+        function hexToRgb(hex) {
+            const m = hex.startsWith('#') ? hex.slice(1) : hex;
+            const bigint = parseInt(m, 16);
+            const r = (bigint >> 16) & 255;
+            const g = (bigint >> 8) & 255;
+            const b = bigint & 255;
+            return [r, g, b];
         }
         function drawPath(color, points, isDashed = false) {
             const ppi = state.ppi;
             const pointsInches = points.map(p => [p[0] / ppi, p[1] / ppi]);
             dielinePaths.push({ color, points: pointsInches, isDashed });
             ctx.strokeStyle = color;
-            ctx.lineWidth = 1 / state.transform.scale;
+            const compositeScale = (state.view?.fitScale || 1) * state.transform.scale;
+            ctx.lineWidth = 1 / compositeScale;
             if (isDashed) {
-                ctx.setLineDash([5 / state.transform.scale, 5 / state.transform.scale]);
+                ctx.setLineDash([5 / compositeScale, 5 / compositeScale]);
             } else {
                 ctx.setLineDash([]);
             }
@@ -694,22 +716,23 @@
         function drawDimension(x1, y1, x2, y2, text, position) {
             const ppi = state.ppi;
             const offset = 40;
+            const compositeScale = (state.view?.fitScale || 1) * state.transform.scale;
             ctx.strokeStyle = DIM_COLOR;
             ctx.fillStyle = DIM_COLOR;
-            ctx.lineWidth = 0.5 / state.transform.scale;
-            ctx.font = `${10 / state.transform.scale}px Inter`;
+            ctx.lineWidth = 0.5 / compositeScale;
+            ctx.font = `${10 / compositeScale}px Inter`;
             ctx.textAlign = "center";
             ctx.textBaseline = "middle";
             if (position === 'bottom') {
                 drawPath(DIM_COLOR, [[x1, y1], [x1, y1 + offset], [x2, y1 + offset], [x2, y1]]);
-                ctx.fillText(text, (x1 + x2) / 2, y1 + offset + (10 / state.transform.scale));
+                ctx.fillText(text, (x1 + x2) / 2, y1 + offset + (10 / compositeScale));
             } else if (position === 'top') {
                 drawPath(DIM_COLOR, [[x1, y1], [x1, y1 - offset], [x2, y1 - offset], [x2, y1]]);
-                ctx.fillText(text, (x1 + x2) / 2, y1 - offset - (10 / state.transform.scale));
+                ctx.fillText(text, (x1 + x2) / 2, y1 - offset - (10 / compositeScale));
             } else if (position === 'right') {
                 drawPath(DIM_COLOR, [[x1, y1], [x1 + offset, y1], [x1 + offset, y2], [x1, y2]]);
                 ctx.save();
-                ctx.translate(x1 + offset + (10 / state.transform.scale), (y1 + y2) / 2);
+                ctx.translate(x1 + offset + (10 / compositeScale), (y1 + y2) / 2);
                 ctx.rotate(-Math.PI / 2);
                 ctx.fillText(text, 0, 0);
                 ctx.restore();
@@ -777,14 +800,13 @@
                 const { jsPDF } = window.jspdf;
                 const doc = new jsPDF({ unit: 'pt', format: [exportWidth, exportHeight] });
                 dielinePaths.forEach(path => {
-                    doc.setDrawColor(path.color.substring(1));
+                    const [r, g, b] = hexToRgb(path.color);
+                    doc.setDrawColor(r, g, b);
                     doc.setLineWidth(1);
-                    if (path.isDashed) {
-                        if (path.color === CREASE_COLOR) {
-                            doc.setLineDashPattern([10, 3, 3, 3], 0);
-                        } else {
-                            doc.setLineDashPattern([5, 5], 0);
-                        }
+                    if (path.color === CREASE_COLOR) {
+                        doc.setLineDashPattern([10, 3, 3, 3], 0);
+                    } else if (path.isDashed) {
+                        doc.setLineDashPattern([5, 5], 0);
                     } else {
                         doc.setLineDashPattern([], 0);
                     }
@@ -812,23 +834,40 @@
             const doc = parser.parseFromString(svgContent, "image/svg+xml");
             const svgPaths = doc.querySelectorAll('path, line, polyline');
             const svgEl = doc.querySelector('svg');
-            const viewBox = svgEl.getAttribute('viewBox') || `0 0 ${svgEl.getAttribute('width')} ${svgEl.getAttribute('height')}`;
-            const [minX, minY, width, height] = viewBox.split(' ').map(Number);
-            const ppi = state.ppi;
-            const scaleFactor = ppi / (width / (4 * INCH_TO_MM));
+            const viewBoxAttr = svgEl.getAttribute('viewBox');
+            let minX = 0, minY = 0, width = 0, height = 0;
+            if (viewBoxAttr) {
+                [minX, minY, width, height] = viewBoxAttr.split(' ').map(Number);
+            } else {
+                width = parseFloat(svgEl.getAttribute('width')) || 0;
+                height = parseFloat(svgEl.getAttribute('height')) || 0;
+            }
+            // Assume 72 user units per inch if unspecified; store points in inches
+            const scaleFactor = 1 / (state.ppi || 72);
             svgPaths.forEach(el => {
-                const points = [];
+                let points = [];
                 const color = el.getAttribute('stroke') || '#000000';
                 const dashArray = el.getAttribute('stroke-dasharray');
-                const isDashed = !!dashArray;
+                const isDashed = !!dashArray && dashArray !== 'none';
                 if (el.tagName === 'polyline') {
                     const polyPoints = el.points;
                     for (let i = 0; i < polyPoints.length; i++) {
-                        points.push([polyPoints[i].x * scaleFactor, polyPoints[i].y * scaleFactor]);
+                        points.push([(polyPoints[i].x - minX) * scaleFactor, (polyPoints[i].y - minY) * scaleFactor]);
                     }
                 } else if (el.tagName === 'line') {
-                    points.push([parseFloat(el.getAttribute('x1')) * scaleFactor, parseFloat(el.getAttribute('y1')) * scaleFactor]);
-                    points.push([parseFloat(el.getAttribute('x2')) * scaleFactor, parseFloat(el.getAttribute('y2')) * scaleFactor]);
+                    points.push([(parseFloat(el.getAttribute('x1')) - minX) * scaleFactor, (parseFloat(el.getAttribute('y1')) - minY) * scaleFactor]);
+                    points.push([(parseFloat(el.getAttribute('x2')) - minX) * scaleFactor, (parseFloat(el.getAttribute('y2')) - minY) * scaleFactor]);
+                } else if (el.tagName === 'path' && typeof el.getTotalLength === 'function') {
+                    try {
+                        const length = el.getTotalLength();
+                        const samples = Math.max(2, Math.ceil(length / 5));
+                        for (let i = 0; i < samples; i++) {
+                            const pt = el.getPointAtLength((length * i) / (samples - 1));
+                            points.push([(pt.x - minX) * scaleFactor, (pt.y - minY) * scaleFactor]);
+                        }
+                    } catch (_) {
+                        // Ignore invalid paths
+                    }
                 }
                 if (points.length > 0) {
                     uploadedPaths.push({ color, points, isDashed });
@@ -919,12 +958,20 @@
             const mouseX = e.clientX - rect.left;
             const mouseY = e.clientY - rect.top;
             if (state.isEditingTearLine) {
+                if (!state.view) return;
+                const compositeScale = (state.view.fitScale || 1) * state.transform.scale;
+                const originX = (rect.width / 2);
+                const originY = (rect.height / 2);
+                const worldOriginPxX = (state.view.totalWidth * state.view.ppi) / 2;
+                const worldOriginPxY = (state.view.totalHeight * state.view.ppi) / 2;
                 for (let i = 0; i < state.tearAwayLines.length; i++) {
                     for (let j = 0; j < state.tearAwayLines[i].points.length; j++) {
                         const v = state.tearAwayLines[i].points[j];
-                        const pointX = (v[0] * state.ppi * state.transform.scale) + state.pan.x + (rect.width/2) - (getDielineDimensions(getDimensions(), state.boxType).totalWidth * state.ppi * state.transform.scale)/2;
-                        const pointY = (v[1] * state.ppi * state.transform.scale) + state.pan.y + (rect.height/2) - (getDielineDimensions(getDimensions(), state.boxType).totalHeight * state.ppi * state.transform.scale)/2;
-                        if (Math.hypot(pointX - mouseX, pointY - mouseY) < 10) {
+                        const worldPxX = v[0] * state.view.ppi;
+                        const worldPxY = v[1] * state.view.ppi;
+                        const screenX = originX + (worldPxX - worldOriginPxX) * compositeScale + state.pan.x;
+                        const screenY = originY + (worldPxY - worldOriginPxY) * compositeScale + state.pan.y;
+                        if (Math.hypot(screenX - mouseX, screenY - mouseY) < 10) {
                             state.draggingVertex = { lineIndex: i, vertexIndex: j };
                             return;
                         }
@@ -939,10 +986,18 @@
         function handleCanvasMouseMove(e) {
             const rect = elements.dielineCanvas.getBoundingClientRect();
             if (state.draggingVertex) {
+                if (!state.view) return;
                 const mouseX = e.clientX - rect.left;
                 const mouseY = e.clientY - rect.top;
-                const newX = (mouseX - state.pan.x - (rect.width/2) + (getDielineDimensions(getDimensions(), state.boxType).totalWidth * state.ppi * state.transform.scale)/2) / (state.ppi * state.transform.scale);
-                const newY = (mouseY - state.pan.y - (rect.height/2) + (getDielineDimensions(getDimensions(), state.boxType).totalHeight * state.ppi * state.transform.scale)/2) / (state.ppi * state.transform.scale);
+                const compositeScale = (state.view.fitScale || 1) * state.transform.scale;
+                const originX = (rect.width / 2);
+                const originY = (rect.height / 2);
+                const worldOriginPxX = (state.view.totalWidth * state.view.ppi) / 2;
+                const worldOriginPxY = (state.view.totalHeight * state.view.ppi) / 2;
+                const worldPxX = ((mouseX - originX - state.pan.x) / compositeScale) + worldOriginPxX;
+                const worldPxY = ((mouseY - originY - state.pan.y) / compositeScale) + worldOriginPxY;
+                const newX = worldPxX / state.view.ppi;
+                const newY = worldPxY / state.view.ppi;
                 state.tearAwayLines[state.draggingVertex.lineIndex].points[state.draggingVertex.vertexIndex] = [newX, newY];
                 draw();
             } else if (state.pan.active) {
